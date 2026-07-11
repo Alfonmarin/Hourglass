@@ -12,7 +12,6 @@
     "test:setup": "node test/setup-local.mjs",
     "test:flow": "node test/test-full-flow.mjs",
     "test:unit": "bun test test/unit",
-    "test:all": "npm run test:setup && npm run test:flow",
     "publisher": "bun server/intuition-publisher.ts"
   },
   "dependencies": {

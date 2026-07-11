@@ -1,6 +1,5 @@
 import { keccak256, toBytes, type Address, type Hex } from 'viem'
 import { canonicalize, type PinResult } from './subscriptionTerms'
-import { sanitizeTokenMeta } from './token-meta'
 
 /**
  * Streaming payroll contract: a human-readable agreement pinned to IPFS, with its
@@ -14,8 +13,7 @@ import { sanitizeTokenMeta } from './token-meta'
  */
 
 export interface StreamTerms {
-  // v2: no free-text org name in the salted terms (see ADR 0005 / SubscriptionTerms).
-  organization: { recipient: Address; delegate: Address }
+  organization: { name: string; recipient: Address; delegate: Address }
   subscriber: { label: string; account: Address }
   token: { address: Address; symbol: string; decimals: number }
   // Display rate the beneficiary signed up for (e.g. "1000" over `ratePeriodSeconds`).
@@ -30,7 +28,7 @@ export interface StreamTerms {
 }
 
 export interface StreamAgreementDocument {
-  schema: 'ourglass/stream-agreement@2'
+  schema: 'ourglass/stream-agreement@1'
   id: string
   createdAt: string
   chainId: number
@@ -43,7 +41,7 @@ export function hashStreamTerms(terms: StreamTerms): Hex {
 }
 
 export function buildStreamTerms(params: {
-  organization: { recipient: Address; delegate: Address }
+  organization: { name: string; recipient: Address; delegate: Address }
   subscriber: { label: string; account: Address }
   token: { address: Address; symbol: string; decimals: number }
   // Display rate (e.g. "1000" over `ratePeriodSeconds`).
@@ -57,13 +55,11 @@ export function buildStreamTerms(params: {
   startTime?: number
   cancellation?: string
 }): StreamTerms {
-  // Token metadata is hostile input — sanitize identically here and in reconstruction.
-  const token = sanitizeTokenMeta({ address: params.token.address, symbol: params.token.symbol, name: '', decimals: params.token.decimals })
   const startTime = params.startTime ?? Math.floor(Date.now() / 1000)
   return {
     organization: params.organization,
     subscriber: params.subscriber,
-    token: { address: token.address, symbol: token.symbol, decimals: token.decimals },
+    token: params.token,
     ratePerPeriod: params.ratePerPeriod,
     ratePeriodSeconds: params.ratePeriodSeconds,
     amountPerSecondRaw: params.amountPerSecondRaw,
@@ -82,7 +78,7 @@ export function buildStreamAgreement(params: {
   createdAt?: string
 }): StreamAgreementDocument {
   return {
-    schema: 'ourglass/stream-agreement@2',
+    schema: 'ourglass/stream-agreement@1',
     id: params.id,
     createdAt: params.createdAt ?? new Date().toISOString(),
     chainId: params.chainId,

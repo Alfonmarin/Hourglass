@@ -234,10 +234,10 @@ export default function CreateDelegation() {
       const nowSec = Math.floor(Date.now() / 1000)
       const endDate = boundMode === 'hardcap' && capDurationSeconds > 0 ? nowSec + capDurationSeconds : null
       const terms = buildTerms({
-        organization: { recipient: recipient as Address, delegate: recipient as Address },
+        organization: { name: payeeName || 'Organization', recipient: recipient as Address, delegate: recipient as Address },
         subscriber: { label: 'Safe', account: safe.safeAddress as Address },
         token: { address: tokenAddress as Address, symbol: tokenSymbol, decimals },
-        amountPerPeriodRaw: parseUnits(amount, decimals).toString(),
+        amountPerPeriod: amount,
         periodSeconds,
         endDate,
       })
@@ -245,7 +245,7 @@ export default function CreateDelegation() {
     } catch {
       return null
     }
-  }, [amount, amountValid, tokenValid, recipientValid, tokenAddress, decimals, tokenSymbol, recipient, periodSeconds, boundMode, capDurationSeconds, safe.chainId, safe.safeAddress])
+  }, [amount, amountValid, tokenValid, recipientValid, tokenAddress, decimals, tokenSymbol, payeeName, recipient, periodSeconds, boundMode, capDurationSeconds, safe.chainId, safe.safeAddress])
 
   async function handleSign() {
     setSigning(true)
@@ -275,10 +275,10 @@ export default function CreateDelegation() {
 
       // Pin the human-readable contract and bind the signature to it: salt = keccak256(terms).
       const terms = buildTerms({
-        organization: { recipient: recipient as Address, delegate },
+        organization: { name: payeeName || 'Organization', recipient: recipient as Address, delegate },
         subscriber: { label: 'Safe', account: safe.safeAddress as Address },
         token: { address: tokenAddress as Address, symbol: tokenSymbol, decimals },
-        amountPerPeriodRaw: parseUnits(amount, decimals).toString(),
+        amountPerPeriod: amount,
         periodSeconds,
         startDate: nowSec,
         endDate: expiryTs ?? null,

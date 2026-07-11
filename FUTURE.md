@@ -46,12 +46,12 @@ Deferred ideas captured during tasks (per workflow rules — scope discipline).
      251-char `"0.000…"` string — a garbage `amountPerPeriod` display and a
      bloated terms field.
 
-  **Fix (per ADR 0005):** one canonical sanitizer in the service layer
-  (byte-length cap on `symbol`/`name`, strip non-printable/control chars, clamp
-  `decimals` to a sane range e.g. 0–36), applied IDENTICALLY at proposal
-  (`buildTerms`) and at reconstruction (publisher). Because both sides derive
-  the same sanitized value, the salt still matches — determinism preserved.
-  Also independently valuable for the current UI even before indexing lands
-  (vectors 2 and 3 already affect the live app's display and stored terms).
-  PoC script: reproduce with `formatUnits(1_000_000n, 255)` and a
-  `Buffer.byteLength` of a doc carrying `'A'.repeat(500_000)` as symbol.
+  **Fix (per ADR 0005):** one shared sanitizer (`src/lib/sanitize-text.ts` +
+  `src/lib/token-meta.ts`, DONE) — byte-length cap on `symbol`/`name`, strip
+  control + HTML-significant chars, clamp `decimals` to 0–36. Applied to the
+  token metadata that enters the **Intuition document description** (commit 2),
+  server-side and in any client that builds the description. This is
+  Intuition-side only — it does NOT touch the salted terms or the signed struct
+  (the earlier plan to sanitize inside `buildTerms` was dropped with the terms-v2
+  revert). PoC (verified 2026-07-11): `formatUnits(1_000_000n, 255)` → 251-char
+  string; a doc carrying `'A'.repeat(500_000)` as symbol → ~977 KiB.

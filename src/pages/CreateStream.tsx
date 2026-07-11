@@ -278,7 +278,7 @@ export default function CreateStream() {
       const ratePerPeriod = fmt(aps * BigInt(MONTH))
 
       const terms = buildStreamTerms({
-        organization: { recipient: recipient as Address, delegate },
+        organization: { name: beneficiaryName || 'Beneficiary', recipient: recipient as Address, delegate },
         subscriber: { label: 'Payer', account: safe.safeAddress as Address },
         token: { address: tokenAddress as Address, symbol: tokenSymbol, decimals },
         ratePerPeriod,

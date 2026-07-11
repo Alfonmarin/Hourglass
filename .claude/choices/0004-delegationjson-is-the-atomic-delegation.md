@@ -1,7 +1,6 @@
 # 0004 — DelegationJson document: schema.org Thing wrapper + `delegation` field
 
-**Status:** Accepted — document contents amended by 0005 (`signature` and
-non-deterministic fields removed from the pinned document)
+**Status:** Accepted
 **Date:** 2026-06-28
 **Triggered by:** User decision during Phase 2 live validation of `spec/intuition/README.md`.
 
