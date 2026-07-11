@@ -1,4 +1,6 @@
 import type { DelegationStruct } from '../delegations'
+import { cleanDisplayText } from '../sanitize-text'
+import { SYMBOL_MAX_CHARS } from '../token-meta'
 
 /**
  * The IPFS document behind a `DelegationJson` atom: a schema.org Thing (so the
@@ -49,9 +51,21 @@ const KIND_ENFORCER: Record<DelegationKind, string> = {
   stream: 'erc20Streaming',
 }
 
-/** One human-readable sentence describing what the delegation authorizes. */
+/** Cap on the derived amount string — a token with absurd `decimals` can make
+ * `formatUnits` produce a very long string; bound it before it enters the doc. */
+const AMOUNT_MAX_CHARS = 40
+
+/**
+ * One human-readable sentence describing what the delegation authorizes.
+ *
+ * `tokenSymbol` and `amount` originate from an attacker-deployable ERC-20 (an
+ * arbitrary-bytes `symbol`, an absurd `decimals`), so they are sanitized before
+ * they enter the pinned document — which any UI that renders the graph displays.
+ */
 export function describeDelegation(details: DelegationDetails): string {
-  return `${KIND_LABEL[details.kind]} delegation using the ${KIND_ENFORCER[details.kind]} enforcer for an amount of ${details.amount} ${details.tokenSymbol} / ${details.period}.`
+  const symbol = cleanDisplayText(details.tokenSymbol, SYMBOL_MAX_CHARS)
+  const amount = cleanDisplayText(details.amount, AMOUNT_MAX_CHARS)
+  return `${KIND_LABEL[details.kind]} delegation using the ${KIND_ENFORCER[details.kind]} enforcer for an amount of ${amount} ${symbol} / ${details.period}.`
 }
 
 export function buildDelegationDocument(params: {

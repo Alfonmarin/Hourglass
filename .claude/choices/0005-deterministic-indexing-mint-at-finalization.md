@@ -99,17 +99,35 @@ the terms, the struct, and the redeem flow are untouched.
      they enter the document.
 
 5. **Organization / `owns` edge.**
+   - **Ontology unchanged (decided 2026-07-11).** Only the OrgPicker `org` (the
+     org that OWNS the payer's Safe) is minted as a named Organization atom, and
+     only if the user selects one (optional). The payee is its recipient CAIP-10
+     address atom, UNNAMED. We keep exactly this — no payee naming added.
+   - Two distinct names must not be confused: `terms.organization.name`
+     (the free-text "payee" label, `payeeName`) is IN THE SALT and stays in the
+     local label — it plays NO role in indexing and never reaches the graph. The
+     Intuition Organization atom is driven by the separate OrgPicker selection
+     (`org`), graph metadata, never the salt.
    - The org name is NOT needed to index the delegation (the delegation commits
-     to addresses; the org is graph metadata). Existing orgs are resolved from
-     the graph via `findOwningOrganization(safeAddress)` → `(Organization)
-     —owns→ (delegator CAIP-10)` → `label` / `value.organization.name`.
+     to addresses; the org is graph metadata).
+   - **Org resolution is ADDRESS-first, name-second:**
+     1. **By Safe address (primary, deterministic):**
+        `findOwningOrganization(safeAddress)` follows the `owns` edge from the
+        Safe's CAIP-10 atom → `(Organization) —owns→ (delegator CAIP-10)` →
+        `label` / `value.organization.name`. If the Safe is already linked to an
+        org, reuse it.
+     2. **By name (only when creating a genuinely new org):** an Organization
+        atom has NO address field (name/url/… only), so it is content-addressed
+        on its content — the only way to dedup an atom is by name. So dedup by
+        name (`searchOrganizations`, reuse `term_id` if present) applies ONLY on
+        the create path, after the address lookup found nothing.
    - OurGlass MAY mint a new Organization atom from a user-typed name (so anyone
-     can create their org), bounded by: **dedup by name first**
-     (`searchOrganizations`, reuse `term_id` if present); the **`owns` edge is
-     EIP-1271-gated** so it is always SELF-SCOPED (you can only assert ownership
-     of a Safe that actually signed — your own); residual name-impersonation is
-     inherent to Intuition's permissionless model (staking/curation is the
-     recourse, not us); the attestor pays gas (accepted economic risk, below).
+     can create their org), bounded by: the name dedup above; the **`owns` edge
+     is EIP-1271-gated** so it is always SELF-SCOPED (you can only assert
+     ownership of a Safe that actually signed — your own); residual
+     name-impersonation is inherent to Intuition's permissionless model
+     (staking/curation is the recourse, not us); the attestor pays gas (accepted
+     economic risk, below).
    - The `owns` edge is DECOUPLED from delegation indexing: the delegation
      indexes from the struct by the backend regardless; the `owns` edge is a
      separate assertion the proposer's browser drives (it has the org). Pitfall:
@@ -133,6 +151,29 @@ the terms, the struct, and the redeem flow are untouched.
    and Safe address will be published publicly and permanently on Intuition once
    the delegation is signed and the app is reopened, and that the name is an
    unverified public claim. Optionally a consent checkbox.
+
+## Edge cases (v1, accepted)
+
+- **Nobody reopens the app** — a delegation signed but whose Safe never reopens
+  OurGlass is NOT indexed in v1. The deferred redeem watcher (v2) would catch it
+  from an on-chain redeem. Accepted.
+- **Brand-new org, a co-signer finalizes first** — the delegation indexes
+  immediately (from the struct); the `(Organization) —owns→ (Safe)` edge attaches
+  later, when the proposer (who has the org selection in localStorage) reopens
+  the app. Eventual consistency, no corruption — `isTermCreated`/`ensureTriple`
+  guards prevent duplicates. Reconciliation must check the `owns` edge existence
+  SEPARATELY from the delegation atom, or the edge would never attach.
+- **Safe tx-service unavailable** — finalize-on-open simply retries on the next
+  app open; nothing is lost (the message stays in the tx-service).
+- **Duplicate same-label org atoms exist** (observed: two "intuition.box" atoms
+  with distinct term_ids) — always resolve/reuse by `term_id`, never by label
+  string. Address-first resolution (via the `owns` edge) avoids the ambiguity for
+  an already-linked Safe.
+- **Indexing vs redeem** — indexing is a registry/discovery convenience. The
+  org's redeem path (`discover.ts`) reads the signed delegation from the graph,
+  so a delegation that was never indexed is not discoverable there until someone
+  reopens the app and it gets indexed (the "nobody reopens" case above). This is
+  a discovery limitation, not a fund-safety one.
 
 ## What changes vs. what does not
 
