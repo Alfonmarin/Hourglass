@@ -56,9 +56,30 @@ Make the indexed delegation fully deterministic from public data, pre-compute it
 ids at proposal, and move all pinning + minting to finalization.
 
 1. **Terms v2 — every field derivable from public data.**
-   - `organization` free-text `name` is replaced by a reference to the org's
-     Intuition atom (`term_id`) + recipient address. Orgs are already selected
-     from Intuition search, so the reference is public and stable.
+   - The `organization.name` free-text field is REMOVED from the salted terms
+     (revised 2026-07-11, supersedes the earlier "reference the org atomId in
+     terms" idea). Rationale: the name is a free user choice, absent from the
+     on-chain delegation struct, so no reconstructor (co-signer browser, backend)
+     can reproduce it — it made the salt non-reconstructible. The delegation
+     commits to ADDRESSES (delegator/delegate), which are in the struct and
+     already what carries on-chain authority; the name was only decorative in
+     the salt. Terms v2 keep the addresses, drop the name.
+   - The org NAME becomes graph metadata, not a cryptographic commitment. It is
+     resolved at index/display time via GraphQL from the delegator (Safe)
+     address — which IS in the struct — through the existing
+     `findOwningOrganization`: `(Organization) —owns→ (delegator CAIP-10)`, then
+     read `label` / `value.organization.name`. Confirmed live on testnet
+     (Organization atoms populate both `label` and `value.organization.name`).
+   - Known limitation (chicken-and-egg): the `owns` triple is created during
+     indexing, so the FIRST time a brand-new free-text org is indexed BY A THIRD
+     PARTY (e.g. a co-signer), the name is not yet on the graph and lives only in
+     the proposer's localStorage. Resolution: index the org by its CAIP-10
+     address (no display name) or defer the `owns` edge until the proposer (who
+     has the name) indexes. The delegation itself always indexes regardless.
+     Reused orgs (picked by `term_id`) and any subsequent delegation resolve the
+     name fine. Prefer reusing an existing Organization atom by `term_id` over
+     recreating by name — duplicate same-label atoms exist on the graph
+     (observed: two "intuition.box" atoms with distinct term_ids).
    - Display amounts (`amountPerPeriod`) are derived canonically from the raw
      caveat value (`formatUnits(periodAmount, decimals)`), never from the user's
      input string. (The stream flow already does this.)
@@ -75,11 +96,11 @@ ids at proposal, and move all pinning + minting to finalization.
    stores them with the pending record (localStorage), and signs. If the
    delegation is never fully signed, the graph and IPFS stay clean.
 
-4. **Finalization is detected first-arrived from two public signals:**
-   - Safe Transaction Service: message `confirmations >= threshold`
-     (browser path on app open, and backend on poke);
-   - on-chain redeem: signed delegation decoded from `redeemDelegations`
-     calldata (keeper path, catches delegations never re-opened in the app).
+4. **Finalization is detected via the Safe Transaction Service** (browser path on
+   app open: message `confirmations >= threshold`, gated on-chain by EIP-1271).
+   The redeem-based signal (decoding the signed delegation from
+   `redeemDelegations` calldata) is a valid SECOND signal but requires a
+   long-running chain watcher — deferred to v2 (FUTURE.md). v1 is browser-only.
 
 5. **The publisher becomes verify-then-mint and accepts no content.** Its input
    is references only (`chainId`, `safeAddress`, `messageHash`, `orgAtomId` —
@@ -101,10 +122,11 @@ ids at proposal, and move all pinning + minting to finalization.
      bounded, noticed loss — not fund theft. Residual controls: rate limit,
      messageHash dedup, verdict cache, and a daily TRUST budget circuit
      breaker with alert. Revisit before mainnet or meaningful funding.
-   - `organization.atomId` is **verifiable but not derivable** (a user choice
-     absent from the delegation struct): it travels in the poke (a wrong id
-     fails the salt check, so it is non-forgeable) and the redeem watcher
-     resolves it by bounded candidate search, skipping on ambiguity.
+   - The org is resolved from the delegator (Safe) ADDRESS, which is in the
+     struct — no org reference travels in the poke, and the org name is not in
+     the salt (see decision point 1, revised). (This supersedes an earlier
+     amendment that carried `orgAtomId` in the poke — dropped once the name left
+     the salt.)
    - Token `symbol`/`decimals` are attacker-deployable inputs: one **shared
      sanitizer** (length cap, printable-only, clamped decimals) is applied
      identically at proposal and reconstruction, preserving determinism while

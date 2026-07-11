@@ -8,6 +8,18 @@ Deferred ideas captured during tasks (per workflow rules — scope discipline).
   per-token decimals in `useClaimTotals`), but if non-USDC redeem becomes real,
   show per-token figures and the actual symbol instead of a single USDC headline.
 
+- **[v2] Redeem watcher — second, trustless finalization signal.** v1 indexes
+  via the browser finalize-on-open path only (any Safe owner opening OurGlass
+  reconstructs the delegation from the Safe Transaction Service and pokes the
+  backend). Gap: a delegation signed AND redeemed but whose Safe never reopens
+  the app is not indexed. A backend watcher scanning `DelegationManager`
+  `redeemDelegations` on the app chain closes it — the calldata carries the full
+  signed delegation, so it feeds the same verify-then-mint path with no trust in
+  any Web2 API. Deferred because it is a long-running chain scanner (dedicated
+  singleton process, reorg/receipt-status handling, and a block-cursor decision:
+  stateless rescan-window vs persisted cursor). Reintroduce if the "used but
+  never reopened" case proves real. Design context in ADR 0005.
+
 - **[SECURITY] Unbounded token metadata (`symbol`/`name`/`decimals`) is a
   hostile input.** `readErc20Meta` (`src/lib/erc20.ts:43`) reads a custom
   token's `symbol`/`name`/`decimals` from the contract with no bounds, and they
