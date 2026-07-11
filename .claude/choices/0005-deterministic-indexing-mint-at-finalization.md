@@ -70,16 +70,67 @@ ids at proposal, and move all pinning + minting to finalization.
      `findOwningOrganization`: `(Organization) —owns→ (delegator CAIP-10)`, then
      read `label` / `value.organization.name`. Confirmed live on testnet
      (Organization atoms populate both `label` and `value.organization.name`).
-   - Known limitation (chicken-and-egg): the `owns` triple is created during
-     indexing, so the FIRST time a brand-new free-text org is indexed BY A THIRD
-     PARTY (e.g. a co-signer), the name is not yet on the graph and lives only in
-     the proposer's localStorage. Resolution: index the org by its CAIP-10
-     address (no display name) or defer the `owns` edge until the proposer (who
-     has the name) indexes. The delegation itself always indexes regardless.
-     Reused orgs (picked by `term_id`) and any subsequent delegation resolve the
-     name fine. Prefer reusing an existing Organization atom by `term_id` over
-     recreating by name — duplicate same-label atoms exist on the graph
+   - The `(Organization) —owns→ (delegator Safe)` edge is DECOUPLED from
+     delegation indexing (decided 2026-07-11). Delegation indexing (atom +
+     relationship + context triples) is deterministic and done by anyone from
+     the Safe message. The `owns` edge is a separate assertion only the proposer
+     can make (only they know their org): the proposer's browser ensures it
+     exists using the org selection in localStorage, reconciled INDEPENDENTLY of
+     whether the delegation atom already exists.
+   - **Implementation pitfall (must handle):** reconciliation keyed only on
+     `isTermCreated(delegationAtom)` would never attach the `owns` edge once a
+     co-signer has indexed the delegation — the proposer would see "already
+     indexed" and never re-poke, leaving the delegation permanently orphaned of
+     its org. The proposer's reconciliation MUST check the `owns` edge existence
+     separately and poke to create it when missing and an org is known.
+   - Brand-new org (not yet on the graph): created BY THE PROPOSER at
+     finalization (Organization atom by name, from localStorage) + the `owns`
+     edge. Existing orgs are resolved from the graph (mandatory — option 2 via
+     `findOwningOrganization`). Prefer reusing an existing Organization atom by
+     `term_id` over recreating by name — duplicate same-label atoms exist
      (observed: two "intuition.box" atoms with distinct term_ids).
+   - Consequence: for a brand-new org where a co-signer finalizes first, the
+     delegation indexes immediately and the `owns` edge attaches later (eventual
+     consistency) — no corruption, guards prevent double-mint; only the org link
+     lags until the proposer opens the app.
+
+   **Org creation policy (decided 2026-07-11).** OurGlass MAY mint a new
+   Organization atom from a user-typed name (so anyone can create their org),
+   under these bounds:
+   - **Dedup by name first.** Search existing Organization atoms by label
+     (`searchOrganizations`); reuse the existing `term_id` if found; mint a new
+     atom only when the name is genuinely absent. Prevents duplicate spam.
+   - **The `owns` edge is gated by EIP-1271** — the backend creates
+     `(Org) —owns→ (Safe X)` ONLY after verifying on-chain a valid signed
+     message from Safe X (the same gate as the delegation, amendment 1).
+     Therefore the edge is always SELF-SCOPED: you can only assert org-ownership
+     of a Safe that actually signed, i.e. your own. Nobody can assert ownership
+     of a Safe they do not control. Without this gate the poke would let anyone
+     claim any org owns any Safe — the gate is mandatory.
+   - **Residual, accepted:** a user can put any (even impersonating) name on
+     THEIR OWN org atom. This is inherent to Intuition's permissionless model —
+     the name is an unverified claim, not proof of identity; staking/counter-
+     triples/curation are the recourse, not OurGlass. The delegation's verified
+     part is the ADDRESSES; the name is decorative graph metadata.
+   - **Cost:** the attestor pays gas for org creation — the same accepted
+     economic risk as delegation minting (amendment 2), under the budget +
+     alert circuit breaker.
+
+   **Creation timing (no watcher, v1).** The org atom + `owns` edge are created
+   at finalize-on-open: someone opens OurGlass on the Safe AND the delegation
+   message has reached threshold (fully signed, EIP-1271-verified). Signing
+   alone mints nothing; redeem is NOT a trigger (watcher deferred). So the
+   sequence is: propose (nothing minted) → sign to threshold → any owner opens
+   the app → browser pokes → backend verifies + mints.
+
+   **User consent (UI requirement — commit 3).** Because this publishes the org
+   name + the Safe address to a PUBLIC, PERMANENT graph (atoms/triples cannot be
+   unmade), the create flow must inform the user BEFORE they sign: that the
+   org name they type and their Safe address will be published publicly on
+   Intuition and are permanent, that it happens once the delegation is signed
+   and the app is reopened, and that the name is an unverified public claim.
+   Factual microcopy per the UI rules (no marketing, no emoji), optionally a
+   consent checkbox.
    - Display amounts (`amountPerPeriod`) are derived canonically from the raw
      caveat value (`formatUnits(periodAmount, decimals)`), never from the user's
      input string. (The stream flow already does this.)

@@ -136,10 +136,18 @@ new hook `src/hooks/useFinalizePending.ts`, `src/pages/Home.tsx`.
 - `useFinalizePending`: on app open with a connected Safe, list that Safe's
   DelegationManager-domain messages, keep those with `confirmations >= threshold`,
   `isTermCreated(atomId)` RPC read, and poke the backend with references only
-  (`{ chainId, safeAddress, messageHash }`, plus optional `orgName` from meta for
-  a brand-new org's atom label). Renders nothing; status on the existing
-  Intuition status UI.
+  (`{ chainId, safeAddress, messageHash }`, plus optional `orgName`/`orgAtomId`
+  from meta for the `owns` edge). The `owns`-edge reconciliation checks the edge
+  existence SEPARATELY from the delegation atom (see ADR pitfall) — a delegation
+  already indexed by a co-signer must still get its `owns` edge when the proposer
+  opens the app. Renders nothing; status on the existing Intuition status UI.
 - localStorage records with `termsVersion < 2`: skipped (not retroactive).
+- **User consent copy (UI):** in the create flow, below the org-name field,
+  factual microcopy stating the org name + Safe address will be published
+  publicly and permanently on Intuition once the delegation is signed and the
+  app is reopened, and that the name is an unverified public claim. Per ui.md
+  (no marketing, no emoji); optional consent checkbox. Org creation is
+  dedup-by-name + EIP-1271-gated `owns` (self-scoped) per ADR 0005.
 
 ## Commit 4 — `feat(server): verify-then-mint publisher + dedicated deploy`
 
