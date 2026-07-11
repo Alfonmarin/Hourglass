@@ -83,7 +83,7 @@ new `src/lib/token-meta.ts` (sanitizer), `src/pages/CreateDelegation.tsx`,
   hostile token AND blocks injection / oversized-doc CID breakage
   (FUTURE.md security ticket — folded in here, not split out).
 - Keep canonicalization untouched (sortDeep + JSON.stringify is deterministic).
-- Tests (vitest, service): round-trip — given only
+- Tests (bun test, service): round-trip — given only
   `{ delegation struct, chainId, safeAddress, token metadata }`, rebuild terms
   and assert `hashTerms(rebuilt) === salt`. Cases: endDate null/set; user amount
   with trailing zeros (must not change the hash); hostile token (sanitizer makes
