@@ -1,0 +1,166 @@
+# 0005 — Deterministic delegation indexing: derivable terms, mint at finalization
+
+**Status:** Accepted
+**Date:** 2026-07-11
+**Triggered by:** User request — multisig async-signing breaks Intuition indexing (data lost when a co-signer signs later); backend must not become an attack surface.
+
+## Context
+
+Intuition publishing is bolted to the in-session sign event (`publishToIntuition`
+inline in `handleSign`). On a threshold > 1 Safe, `signTypedMessage` resolves after
+the FIRST owner signs, returning only the `safeTxHash`. Three failures follow:
+
+1. If the Nth owner signs later, nothing re-triggers the publish — the delegation
+   is never indexed.
+2. The published document embeds a placeholder signature (the safeTxHash), not the
+   aggregated EIP-1271 signature.
+3. The org selection and display details live only in React state — gone next day.
+
+Constraints established during design:
+
+- **Nothing minted before finalization.** Intuition atoms are permanent; minting
+  at proposal publishes claims about delegations that may never be signed.
+- **Nothing pinned before finalization.** A pin-on-propose endpoint is a free
+  pinning service for attackers on our Pinata account.
+- **No trust in the backend.** A compromised publisher must not be able to forge
+  delegations or hold anything but a gas key. No private database.
+- **On-chain format unchanged.** Same delegation struct, same
+  `erc20PeriodTransfer` caveat, same EIP-712 domain, salt still
+  `keccak256(canonicalize(terms))`.
+
+Verified facts this decision rests on:
+
+- Intuition term ids are content-addressed (`calculateAtomId(bytes)` /
+  `calculateTripleId(...)` are pure), `isTermCreated` is a free read, creation
+  reverts on duplicates. Pre-computing ids and minting later is sound.
+- The pending Safe message on the Safe Transaction Service exposes the full
+  EIP-712 typed data (delegate, delegator, salt, caveat terms bytes),
+  `confirmations[]`, and `preparedSignature` once complete — public, keyed by
+  Safe address.
+- A redeem tx carries the full signed delegation in its calldata — a second,
+  fully trustless finalization signal.
+- Reconstruction audit: every `terms` field is derivable from the delegation
+  struct + chain reads + constants EXCEPT `organization.name` (free text, hard
+  blocker) and the `amountPerPeriod` display string (user-typed, soft blocker).
+  The pinned wrapper's `createdAt` (wall clock) is also non-reproducible.
+  Post-review precision: the org atom reference that replaces the free-text
+  name is itself a user CHOICE, not derivable — it is verifiable against the
+  salt but must be carried alongside the references (see decision point 6).
+- `pinThing` (Intuition GraphQL) serializes server-side → its CID is not
+  computable offline. Only self-controlled raw bytes have a locally computable
+  CIDv0.
+
+## Decision
+
+Make the indexed delegation fully deterministic from public data, pre-compute its
+ids at proposal, and move all pinning + minting to finalization.
+
+1. **Terms v2 — every field derivable from public data.**
+   - `organization` free-text `name` is replaced by a reference to the org's
+     Intuition atom (`term_id`) + recipient address. Orgs are already selected
+     from Intuition search, so the reference is public and stable.
+   - Display amounts (`amountPerPeriod`) are derived canonically from the raw
+     caveat value (`formatUnits(periodAmount, decimals)`), never from the user's
+     input string. (The stream flow already does this.)
+   - All other fields stay as they are (already derivable from caveats, chain
+     reads, or constants).
+
+2. **Deterministic DelegationJson document** (amends ADR 0004): keep the
+   schema.org Thing wrapper, drop the `signature` and any wall-clock field
+   (`createdAt`). Every byte of the document is derivable at proposal time, so
+   its CIDv0 — computed locally, no pinning — and therefore the atom `term_id`
+   and all triple ids are known before the first co-signature.
+
+3. **Nothing is pinned or minted at proposal.** The browser computes the ids,
+   stores them with the pending record (localStorage), and signs. If the
+   delegation is never fully signed, the graph and IPFS stay clean.
+
+4. **Finalization is detected first-arrived from two public signals:**
+   - Safe Transaction Service: message `confirmations >= threshold`
+     (browser path on app open, and backend on poke);
+   - on-chain redeem: signed delegation decoded from `redeemDelegations`
+     calldata (keeper path, catches delegations never re-opened in the app).
+
+5. **The publisher becomes verify-then-mint and accepts no content.** Its input
+   is references only (`chainId`, `safeAddress`, `messageHash`, `orgAtomId` —
+   or a redeem tx hash). It fetches the public data itself, reconstructs the
+   terms, and mints only if `keccak256(canonicalize(terms)) === salt` and
+   `isTermCreated(id) === false`. It pins the exact reconstructed bytes as a raw
+   file upload (never `pinJSONToIPFS` re-serialization, never `pinThing`), so
+   the pinned CID equals the precomputed one. A golden test asserts local CID ===
+   Pinata CID for identical bytes.
+
+6. **Red-team amendments (2026-07-11), integral to the decision:**
+   - The mint gate for the tx-service path is an **on-chain EIP-1271
+     `isValidSignature`** check of the `preparedSignature` against the Safe;
+     tx-service confirmation counts are discovery only (a spoofed tx-service
+     must not be able to index a never-signed delegation).
+   - **Economic drain = accepted risk (user decision, 2026-07-11).** A curated
+     org allowlist on the poke path was proposed and rejected: the mint key is
+     funded incrementally and holds small amounts, so the worst case is a
+     bounded, noticed loss — not fund theft. Residual controls: rate limit,
+     messageHash dedup, verdict cache, and a daily TRUST budget circuit
+     breaker with alert. Revisit before mainnet or meaningful funding.
+   - `organization.atomId` is **verifiable but not derivable** (a user choice
+     absent from the delegation struct): it travels in the poke (a wrong id
+     fails the salt check, so it is non-forgeable) and the redeem watcher
+     resolves it by bounded candidate search, skipping on ambiguity.
+   - Token `symbol`/`decimals` are attacker-deployable inputs: one **shared
+     sanitizer** (length cap, printable-only, clamped decimals) is applied
+     identically at proposal and reconstruction, preserving determinism while
+     blocking injection and doc-size CID breakage.
+
+## Alternatives considered
+
+- **Mint "pending" markers at proposal** — rejected: atoms are permanent; a
+  refused co-signature leaves false claims in a public graph forever.
+- **Pin the agreement at proposal, mint later** — rejected: turns the publisher
+  into an open pinning service; pin moves to finalization.
+- **Keep the signature in the atom + reconcile later (keeper fetches
+  `preparedSignature`)** — rejected: the atom id then depends on the final
+  signature (not precomputable), and it publishes a re-executable signature into
+  a public graph for no benefit; the signature is always recoverable on demand
+  from the tx-service or redeem calldata.
+- **`pinThing` for the delegation atom** — rejected: server-side serialization
+  makes the CID unpredictable; determinism requires self-controlled bytes.
+- **Private backend queue/database of pending delegations** — rejected by the
+  no-backend-trust constraint; the Safe Transaction Service and the chain are
+  the queue.
+
+## Consequences
+
+**Positive:**
+- Multisig timing becomes irrelevant: indexing no longer depends on any browser
+  session surviving until the Nth signature.
+- Backend compromise is bounded to spam mints / refusal to mint — it can forge
+  nothing (every mint is re-verifiable via `salt === keccak256(terms)`), holds
+  only a gas key, stores nothing.
+- Indexing is permissionless and idempotent: anyone can re-run it from public
+  data; the publisher is a convenience, not a root of trust.
+- No signature published in the knowledge graph.
+
+**Negative:**
+- **Not retroactive.** Existing delegations (v1 terms with free-text org names)
+  cannot be reconstructed from public data and will not be re-indexed.
+  Accepted by the user (2026-07-11).
+- New delegations get different salt values (format unchanged, derivation
+  input changed).
+- The record on Intuition is no longer directly re-executable (amends ADR 0004's
+  "recoverable + redeemable from the graph" property); re-execution fetches the
+  signature from the Safe tx-service or a past redeem.
+- The OurGlass-verifier must be updated in lockstep to canonicalize terms v2
+  (keeping v1 support for old delegations).
+- A delegation that is signed but never redeemed AND whose Safe never reopens
+  the app is not indexed — accepted edge case.
+
+**Neutral (worth knowing):**
+- CIDv0 determinism is the linchpin: the golden test (local CID vs pinned CID on
+  identical bytes) guards the whole precompute scheme.
+- Browser path depends on tx-service availability; the redeem keeper does not.
+
+## References
+
+- Related rule: `.claude/rules/metamask-delegation.md`, `.claude/rules/security.md`
+- Related ADR: `.claude/choices/0004-delegationjson-is-the-atomic-delegation.md` (amended)
+- Plan: `plan-intuition-reconcile.md`
+- Verifier: https://github.com/intuition-box/OurGlass-verifier
