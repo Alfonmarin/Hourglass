@@ -1,18 +1,20 @@
-import type { Hex } from 'viem'
-import type { DelegationStruct } from './delegations'
-import type { DelegationDetails, IntuitionNetwork, OrganizationInput } from './intuition'
+import type { Address, Hex } from 'viem'
+import type { IntuitionNetwork, OrganizationInput } from './intuition'
 
 /**
  * Client for the Intuition publisher backend. The browser cannot hold the
  * attestor key, so writing the delegation onto the graph is delegated to a
- * node-side service (see server/intuition-publisher.ts). Configured via
+ * node-side service (see server/intuition-publisher.ts). The client sends only
+ * REFERENCES — the backend fetches the finalized Safe message itself, verifies it
+ * on-chain (EIP-1271), and reconstructs the delegation. Configured via
  * VITE_INTUITION_PUBLISHER_URL; absent → publishing is simply disabled.
  */
 
-export interface PublishRequest {
-  delegation: DelegationStruct
+export interface PokeRequest {
   chainId: number
-  details: DelegationDetails
+  safeAddress: Address
+  messageHash: Hex
+  /** Optional org for the ownership edge — the proposer's OrgPicker selection. */
   organization?: OrganizationInput
 }
 
@@ -27,7 +29,8 @@ export function intuitionPublisherUrl(): string | null {
   return typeof url === 'string' && url.length > 0 ? url.replace(/\/$/, '') : null
 }
 
-export async function publishDelegationToIntuition(req: PublishRequest): Promise<PublishResponse> {
+/** Poke the publisher to index a finalized delegation. References only — no payload. */
+export async function pokePublish(req: PokeRequest): Promise<PublishResponse> {
   const base = intuitionPublisherUrl()
   if (!base) throw new Error('VITE_INTUITION_PUBLISHER_URL is not configured')
   const secret = import.meta.env.VITE_INTUITION_PUBLISHER_SECRET
