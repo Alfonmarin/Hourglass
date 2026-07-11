@@ -98,8 +98,12 @@ Files: `src/lib/intuition/delegation-document.ts`, new `src/lib/intuition/cid.ts
   (`createdAt`). Every field derived from terms v2 / the unsigned struct. The
   document's own serialization is canonical (reuse `canonicalize`). Doc `name`/
   `description` stay derived from amount/token/period (never the org name).
-- `cid.ts`: local CIDv0 from raw bytes (dep: `multiformats` — justify in PR per
-  ui.md bundle rule; lazy-import, only Create pages need it).
+- `cid.ts`: local CIDv0 from raw bytes. **Verified recipe (live Pinata test,
+  2026-07-11):** compute with `ipfs-only-hash` (`Hash.of(buf, {cidVersion:0})`)
+  — it reproduces the UnixFS/dag-pb wrapping that `ipfs add` / Pinata apply, so
+  the local CID equals Pinata's. Plain `multiformats` sha256 alone does NOT
+  (missing the UnixFS wrap). Dep: `ipfs-only-hash` (small, purpose-built);
+  justify in PR per ui.md bundle rule; lazy-import (only Create pages need it).
 - At proposal: doc bytes → local CID → `atomId` (call `calculateAtomId` via RPC,
   or replicate `keccak(ATOM_SALT, keccak(data))` with the network's salt) →
   derive triple ids. No pin, no mint.
@@ -108,9 +112,12 @@ Files: `src/lib/intuition/delegation-document.ts`, new `src/lib/intuition/cid.ts
   needed for indexing; keep it only if the UI wants to show it locally.)
 - Remove the `offlinePin` fallback for the indexed path (pinning now happens
   server-side at mint; the browser never pins for indexing).
-- Golden test: fixed doc bytes → local CID === CID Pinata returns for a raw-bytes
-  upload of the same content (recorded fixture; live test behind an env flag).
-  This is the linchpin of the whole precompute scheme.
+- Golden test (empirically confirmed 2026-07-11 — local CID === Pinata CID for
+  the same 210-byte canonical doc; `pinJSONToIPFS` returned a DIFFERENT CID,
+  proving it is unusable for precompute): fixed doc bytes → local CID === CID
+  Pinata returns via `pinFileToIPFS` + `cidVersion:0` for a raw-bytes upload of
+  the same content (recorded fixture; live test behind an env flag). This is the
+  linchpin of the whole precompute scheme.
 
 ## Commit 3 — `feat(web): decouple publish from signing; finalize-on-open`
 
