@@ -90,9 +90,12 @@ const input = {
 }
 
 const testnet = getIntuitionNetwork('testnet')
+// All three testnet predicates are now reused by term_id — `delegate to`'s
+// canonical atom exists on the graph, so nothing is pin-created any more.
 const reusedPredicates: Hex[] = [
   testnet.predicates.owns.termId as Hex,
   testnet.predicates.inContextOf.termId as Hex,
+  testnet.predicates.delegateTo.termId as Hex,
 ]
 
 describe('encoding', () => {
@@ -155,7 +158,9 @@ describe('network config', () => {
       expect(isHex(id)).toBe(true)
       expect(id.length).toBe(66)
     }
-    expect(testnet.predicates.delegateTo.termId).toBeNull()
+    // `delegate to` is reused by term_id too (its canonical atom is on the graph),
+    // so no predicate needs the pin path — which Intuition now gates behind a key.
+    expect(isHex(testnet.predicates.delegateTo.termId as Hex)).toBe(true)
   })
 
   test('multiVault + chain id are set per network', () => {
@@ -175,8 +180,7 @@ describe('publishDelegation', () => {
     // Reused predicates resolve to their configured term_ids (not re-created).
     expect(result.predicates.owns).toBe(testnet.predicates.owns.termId as Hex)
     expect(result.predicates.inContextOf).toBe(testnet.predicates.inContextOf.termId as Hex)
-    // delegate to is pin-created → a fresh id.
-    expect(isHex(result.predicates.delegateTo)).toBe(true)
+    expect(result.predicates.delegateTo).toBe(testnet.predicates.delegateTo.termId as Hex)
 
     // The context triple nests the relationship triple as its object.
     const ctx = createdTriples.find((t) => t.id === result.triples.context)

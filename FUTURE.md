@@ -8,6 +8,30 @@ Deferred ideas captured during tasks (per workflow rules — scope discipline).
   per-token decimals in `useClaimTotals`), but if non-USDC redeem becomes real,
   show per-token figures and the actual symbol instead of a single USDC headline.
 
+- **[BLOCKER-ish] Intuition gated the `pinThing`/`pinOrganization` mutations
+  behind an API key.** Unauthenticated, both `testnet.intuition.sh/v1/graphql`
+  and `mainnet.intuition.sh/v1/graphql` report `mutationType: null`, and a pin
+  attempt returns `no mutations exist` (validation-failed). Access was restricted,
+  not removed — an API key restores it (requested from Intuition 2026-07-17).
+
+  **Impact today: none on testnet.** All three testnet predicates (`owns`,
+  `in context of`, `delegate to`) are now reused by term_id, so the publish path
+  never pins. What still needs the pin path:
+  - **mainnet**: its `delegate to` atom does not exist yet (verified: the label
+    returns no atoms), so the first mainnet publish must create it.
+  - **creating a brand-new Organization atom by name** (`pinOrganization`).
+
+  **When the key arrives:** add the auth header to `createGraphqlPinner`
+  (`src/lib/intuition/atoms.ts`) + an env var; nothing else changes.
+
+  **Plan B if the key never comes:** pin the schema.org JSON ourselves via our
+  existing Pinata account (we already pin the delegation document there) — the
+  mutation only ever did "serialize schema.org JSON + pin to IPFS", both of which
+  we can do. Implement an `IntuitionPinner` backed by `pinJSONToIPFS` returning
+  `ipfs://CID`. Caveat: our serialization may yield a different CID (hence a
+  different atom id) than Intuition's canonical pin — irrelevant for atoms that do
+  not exist yet, but it means we would not reuse a canonical atom they created.
+
 - **[v2] Redeem watcher — second, trustless finalization signal.** v1 indexes
   via the browser finalize-on-open path only (any Safe owner opening OurGlass
   reconstructs the delegation from the Safe Transaction Service and pokes the
