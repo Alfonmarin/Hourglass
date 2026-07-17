@@ -8,10 +8,14 @@
  * Run: bun test test/unit
  */
 import { describe, test, expect } from 'bun:test'
-import { concatHex, pad, numberToHex, getAddress, type Address, type Hex } from 'viem'
+import { concatHex, pad, numberToHex, getAddress, hashTypedData, type Address, type Hex } from 'viem'
 import { buildDelegationTypedData, type DelegationStruct } from '../../src/lib/delegations'
 import { getAddresses } from '../../src/config/addresses'
-import { delegationFromMessage, detailsFromDelegation } from '../../src/lib/intuition/from-message'
+import {
+  delegationFromMessage,
+  detailsFromDelegation,
+  typedDataHashFromMessage,
+} from '../../src/lib/intuition/from-message'
 import type { SafeMessage } from '../../src/lib/safe-messages'
 
 const CHAIN = 84532 // Base Sepolia
@@ -97,6 +101,31 @@ describe('delegationFromMessage — recover the signed struct', () => {
   test('rejects an unfinalized message (no preparedSignature)', () => {
     const msg = { ...wrapAsMessage(makeDelegation()), preparedSignature: null }
     expect(delegationFromMessage(msg, CHAIN)).toBeNull()
+  })
+})
+
+describe('typedDataHashFromMessage — the hash EIP-1271 expects', () => {
+  test('equals the EIP-712 hash of the delegation typed data', () => {
+    const d = makeDelegation()
+    const expected = hashTypedData({
+      domain: buildDelegationTypedData(d, CHAIN).domain,
+      types: { Delegation: buildDelegationTypedData(d, CHAIN).types.Delegation, Caveat: buildDelegationTypedData(d, CHAIN).types.Caveat },
+      primaryType: 'Delegation',
+      message: buildDelegationTypedData(d, CHAIN).message,
+    } as never)
+    expect(typedDataHashFromMessage(wrapAsMessage(d))).toBe(expected)
+  })
+
+  test('is NOT the tx-service messageHash (the wrapped SafeMessage hash)', () => {
+    // Regression: passing the tx-service messageHash to isValidSignature double-wraps
+    // it (the Safe re-wraps _dataHash into SafeMessage) and verification always fails.
+    const msg = wrapAsMessage(makeDelegation())
+    expect(typedDataHashFromMessage(msg)).not.toBe(msg.messageHash)
+  })
+
+  test('null when the message carries no types', () => {
+    const msg = wrapAsMessage(makeDelegation())
+    expect(typedDataHashFromMessage({ ...msg, message: { domain: {}, message: {} } })).toBeNull()
   })
 })
 

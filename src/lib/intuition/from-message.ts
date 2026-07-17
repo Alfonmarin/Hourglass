@@ -1,4 +1,4 @@
-import { getAddress, toHex, formatUnits, type Address, type Hex } from 'viem'
+import { getAddress, toHex, formatUnits, hashTypedData, type Address, type Hex } from 'viem'
 import type { DelegationStruct } from '../delegations'
 import { getAddresses } from '../../config/addresses'
 import type { SafeMessage } from '../safe-messages'
@@ -24,7 +24,9 @@ import type { DelegationDetails } from './delegation-document'
  */
 
 interface DelegationTypedData {
-  domain?: { chainId?: number | string; verifyingContract?: string }
+  domain?: { name?: string; version?: string; chainId?: number | string; verifyingContract?: string }
+  types?: Record<string, { name: string; type: string }[]>
+  primaryType?: string
   message?: {
     delegate?: string
     delegator?: string
@@ -80,6 +82,33 @@ export function delegationFromMessage(msg: SafeMessage, chainId: number): Delega
     })),
     salt: normalizeSalt(m.salt),
     signature: msg.preparedSignature,
+  }
+}
+
+/**
+ * The EIP-712 hash of the delegation typed data (DelegationManager domain) — i.e.
+ * the value the Safe treated as "the message" and wrapped into `SafeMessage`
+ * before its owners signed.
+ *
+ * This is what EIP-1271 `isValidSignature(bytes32 _dataHash, bytes)` expects: the
+ * Safe's fallback handler re-wraps `_dataHash` into `SafeMessage` itself. Passing
+ * the tx-service's `messageHash` (which is ALREADY the wrapped SafeMessage hash)
+ * double-wraps it and the check always fails.
+ */
+export function typedDataHashFromMessage(msg: SafeMessage): Hex | null {
+  const typed = parseTypedData(msg.message)
+  if (!typed?.domain || !typed.message || !typed.types) return null
+  // viem derives the domain separator from `domain`; EIP712Domain must not be in `types`.
+  const { EIP712Domain: _domainType, ...types } = typed.types
+  try {
+    return hashTypedData({
+      domain: typed.domain,
+      types,
+      primaryType: typed.primaryType ?? 'Delegation',
+      message: typed.message,
+    } as Parameters<typeof hashTypedData>[0])
+  } catch {
+    return null
   }
 }
 

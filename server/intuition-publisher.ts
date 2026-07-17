@@ -9,7 +9,12 @@ import {
   type IntuitionNetwork,
   type OrganizationInput,
 } from '../src/lib/intuition'
-import { delegationFromMessage, detailsFromDelegation, tokenFromDelegation } from '../src/lib/intuition/from-message'
+import {
+  delegationFromMessage,
+  detailsFromDelegation,
+  tokenFromDelegation,
+  typedDataHashFromMessage,
+} from '../src/lib/intuition/from-message'
 import { getSafeMessage } from '../src/lib/safe-messages'
 import { readErc20Meta } from '../src/lib/erc20'
 import { sanitizeTokenMeta } from '../src/lib/token-meta'
@@ -184,7 +189,12 @@ async function handlePublish(rt: Runtime, body: PublishBody): Promise<{ uri: str
   if (!delegation) throw new Error('not a finalized OurGlass delegation for this chain')
 
   // 2. TRUST GATE: verify the aggregated signature ON-CHAIN against the Safe.
-  const ok = await verifyEip1271(app, body.safeAddress, body.messageHash, delegation.signature)
+  // Pass the DELEGATION typed-data hash, not the tx-service `messageHash`: the
+  // latter is already the wrapped SafeMessage hash, and the Safe's fallback
+  // handler wraps `_dataHash` into SafeMessage itself (double-wrapping fails).
+  const dataHash = typedDataHashFromMessage(msg)
+  if (!dataHash) throw new Error('could not hash the message typed data')
+  const ok = await verifyEip1271(app, body.safeAddress, dataHash, delegation.signature)
   if (!ok) throw new Error('EIP-1271 verification failed')
 
   // 3. Resolve + sanitize token metadata, build display details from the caveat.
