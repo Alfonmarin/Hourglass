@@ -100,7 +100,13 @@ export const INTUITION_NETWORKS: Record<IntuitionNetwork, IntuitionNetworkConfig
         label: 'in context of',
         termId: '0x61a88b9c372c0d164d2caf66947b67ed0fcb4c457178a271b6b3dc39fb1f8862',
       },
-      delegateTo: { label: 'delegate to', termId: null, pin: delegateToPin },
+      // Created by an earlier publish (type Thing, 5 triples). Pinned here rather
+      // than re-derived: Intuition removed the pinThing GraphQL mutation, so the
+      // pin path is unavailable — and the canonical atom already exists.
+      delegateTo: {
+        label: 'delegate to',
+        termId: '0xb56980d42a3b03455bf41ea20fe04ae223fca0b9e688994dc661414e81e6433b',
+      },
     },
   },
   mainnet: {

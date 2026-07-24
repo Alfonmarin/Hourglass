@@ -17,10 +17,10 @@ import {
 import { MAX_UINT256, perSecondForTotal } from '../lib/streamRate'
 import { readErc20Meta } from '../lib/erc20'
 import { getEnvironment } from '../lib/environment'
-import { saveDelegation, getDelegations, setDelegationIntuition, type StoredDelegation } from '../lib/storage'
-import { usePublishToIntuition } from '../hooks/usePublishToIntuition'
+import { saveDelegation, getDelegations, type StoredDelegation } from '../lib/storage'
+import { intuitionPublisherUrl } from '../lib/intuitionPublisher'
 import { OrgPicker } from '../ui/OrgPicker'
-import { orgSelectionToInput, type OrgSelection } from '../lib/orgSelection'
+import { type OrgSelection } from '../lib/orgSelection'
 import { Card, Btn, GaslessButton, USDC, Mono, CopyChip, Payee } from '../ui/components'
 import { Block, Field, Segmented, Row, PreviewRow } from '../ui/form'
 import { IconCube, IconLock, IconCheck, IconExt, IconHash, IconCal } from '../ui/icons'
@@ -98,19 +98,7 @@ export default function CreateStream() {
   const [touchedRate, setTouchedRate] = useState(false)
   const [touchedCap, setTouchedCap] = useState(false)
 
-  const { publish: publishToIntuition, status: intuitionStatus, enabled: intuitionEnabled } =
-    usePublishToIntuition()
-
-  // Persist the published DelegationJson atom so the overview can deep-link to the
-  // Intuition portal instead of the (possibly offline) IPFS link.
-  useEffect(() => {
-    if (signed && intuitionStatus.state === 'done' && intuitionStatus.atomId && intuitionStatus.network) {
-      setDelegationIntuition(signed.meta.delegationHash, {
-        atomId: intuitionStatus.atomId,
-        network: intuitionStatus.network,
-      })
-    }
-  }, [signed, intuitionStatus])
+  const intuitionEnabled = intuitionPublisherUrl() !== null
 
   const defaultUsdc = USDC_ADDRESS[safe.chainId]
   const tokenAddress = useCustomToken ? customToken : defaultUsdc
@@ -339,6 +327,9 @@ export default function CreateStream() {
           status: 'signed',
           delegationHash,
           agreement: { cid: pin.cid, uri: pin.uri, termsHash: agreement.termsHash },
+          // Recovered by finalize-on-open to index once fully signed (ADR 0005).
+          safeMessageHash: result?.safeTxHash,
+          orgSelection: org ? { atomId: org.atomId ?? undefined, name: org.name } : undefined,
           tokenAddress: tokenAddress as Address,
           recipient: recipient as Address,
           amountPerSecond: aps.toString(),
@@ -351,15 +342,8 @@ export default function CreateStream() {
       }
       saveDelegation(stored)
       setSigned(stored)
-
-      // Record the signed stream on the Intuition graph (fire-and-forget via the
-      // publisher backend — failures never block the create flow).
-      publishToIntuition({
-        delegation: stored.delegation,
-        chainId: safe.chainId,
-        details: { kind: 'stream', amount: ratePerPeriod, tokenSymbol, period: 'month' },
-        organization: orgSelectionToInput(org),
-      })
+      // Indexing is no longer inline: finalize-on-open (useFinalizePending) recovers
+      // the finalized message from the Safe tx-service and pokes the publisher.
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign stream')
     } finally {
@@ -417,11 +401,7 @@ export default function CreateStream() {
             <Row label="Contract hash"><Mono className="text-xs text-dim">{short(signed.meta.agreement!.termsHash)}</Mono></Row>
             <Row label="Intuition">
               <Mono className="text-xs text-dim">
-                {!intuitionEnabled && 'publishing not configured'}
-                {intuitionEnabled && intuitionStatus.state === 'publishing' && 'recording on graph…'}
-                {intuitionEnabled && intuitionStatus.state === 'done' && 'recorded on graph'}
-                {intuitionEnabled && intuitionStatus.state === 'error' && `not recorded — ${intuitionStatus.message}`}
-                {intuitionEnabled && intuitionStatus.state === 'idle' && '—'}
+                {intuitionEnabled ? 'recorded on the graph once fully signed' : 'publishing not configured'}
               </Mono>
             </Row>
           </div>
@@ -455,6 +435,11 @@ export default function CreateStream() {
           <Field label="Organization" hint="The org that owns this Safe — reuse one from Intuition or create it. Recorded as “org owns Safe”. Optional.">
             <OrgPicker safeAddress={safe.safeAddress as Address} safeChainId={safe.chainId} value={org} onChange={setOrg} />
           </Field>
+          {org && intuitionEnabled && (
+            <p className="text-[11px] text-faint mt-1">
+              The organization name and this Safe’s address are published publicly and permanently on Intuition once the delegation is signed. The name is an unverified public claim.
+            </p>
+          )}
         </Block>
 
         {/* Block 1 — Beneficiary */}

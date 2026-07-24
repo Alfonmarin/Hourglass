@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, isHex, isAddress, type Address, type Hex } from 'viem'
+import { createPublicClient, createWalletClient, http, isHex, isAddress, getAddress, type Address, type Hex, type PublicClient } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
   buildDelegationDocument,
@@ -6,24 +6,52 @@ import {
   createViemChain,
   getIntuitionNetwork,
   publishDelegation,
-  type DelegationDetails,
-  type DelegationKind,
   type IntuitionNetwork,
   type OrganizationInput,
 } from '../src/lib/intuition'
-import type { DelegationStruct } from '../src/lib/delegations'
+import {
+  delegationFromMessage,
+  detailsFromDelegation,
+  tokenFromDelegation,
+  typedDataHashFromMessage,
+} from '../src/lib/intuition/from-message'
+import { getSafeMessage } from '../src/lib/safe-messages'
+import { readErc20Meta } from '../src/lib/erc20'
+import { sanitizeTokenMeta } from '../src/lib/token-meta'
+import { findChain, rpcUrl } from '../src/config/supported-chains'
 import { isOriginAllowed, parseAllowedOrigins } from './cors'
 
 /**
  * Intuition publisher: a node-side service that holds the funded attestor key and
- * records a signed OurGlass delegation on the Intuition graph. The Safe App calls
- * it right after a delegation is signed (the browser cannot hold the key). It
- * builds the DelegationJson document, pins it to IPFS, and writes the ontology.
+ * records a signed OurGlass delegation on the Intuition graph.
+ *
+ * It accepts REFERENCES ONLY ({chainId, safeAddress, messageHash, organization?}),
+ * never a delegation payload: it fetches the finalized Safe message from the Safe
+ * Transaction Service itself, verifies the aggregated signature ON-CHAIN via
+ * EIP-1271 against the Safe (the trust gate — a spoofed tx-service cannot make it
+ * index a never-signed delegation), reconstructs the signed struct, then pins the
+ * document and writes the ontology. A compromised publisher can thus forge
+ * nothing; it holds only a gas key. See ADR 0005.
  *
  * Env: INTUITION_ATTESTOR_PK (required), PINATA_JWT (required), INTUITION_NETWORK
  * (testnet|mainnet, default testnet), PORT (default 8787), ALLOWED_ORIGIN
  * (default *), PUBLISH_SECRET (optional — if set, require x-publish-secret).
  */
+
+/** EIP-1271 magic value returned by `isValidSignature(bytes32,bytes)` on success. */
+const EIP1271_MAGIC = '0x1626ba7e'
+const SAFE_IS_VALID_SIGNATURE_ABI = [
+  {
+    type: 'function',
+    name: 'isValidSignature',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'hash', type: 'bytes32' },
+      { name: 'signature', type: 'bytes' },
+    ],
+    outputs: [{ name: '', type: 'bytes4' }],
+  },
+] as const
 
 const pk = process.env.INTUITION_ATTESTOR_PK
 const pinataJwt = process.env.PINATA_JWT
@@ -67,9 +95,9 @@ function buildRuntime(): Runtime | null {
 const runtime = buildRuntime()
 
 interface PublishBody {
-  delegation: DelegationStruct
   chainId: number
-  details: DelegationDetails
+  safeAddress: Address
+  messageHash: Hex
   organization?: OrganizationInput
 }
 
@@ -83,46 +111,52 @@ function parseOrganization(raw: unknown): OrganizationInput | undefined {
   return undefined
 }
 
-function asHex(value: unknown, field: string): Hex {
-  if (typeof value !== 'string' || !isHex(value)) throw new Error(`invalid hex: ${field}`)
-  return value
-}
-
-function asAddress(value: unknown, field: string): Address {
-  if (typeof value !== 'string' || !isAddress(value)) throw new Error(`invalid address: ${field}`)
-  return value
-}
-
-const KINDS: DelegationKind[] = ['subscription', 'stream']
-
 function parseBody(raw: unknown): PublishBody {
   if (typeof raw !== 'object' || raw === null) throw new Error('body must be an object')
   const b = raw as Record<string, unknown>
-  const d = b.delegation as Record<string, unknown> | undefined
-  if (!d) throw new Error('delegation is required')
-  if (!Array.isArray(d.caveats)) throw new Error('delegation.caveats must be an array')
-  const delegation: DelegationStruct = {
-    delegate: asAddress(d.delegate, 'delegation.delegate'),
-    delegator: asAddress(d.delegator, 'delegation.delegator'),
-    authority: asHex(d.authority, 'delegation.authority'),
-    caveats: d.caveats.map((c, i) => {
-      const cv = c as Record<string, unknown>
-      return { enforcer: asAddress(cv.enforcer, `caveat[${i}].enforcer`), terms: asHex(cv.terms, `caveat[${i}].terms`) }
-    }),
-    salt: asHex(d.salt, 'delegation.salt'),
-    signature: asHex(d.signature, 'delegation.signature'),
-  }
   const chainId = Number(b.chainId)
   if (!Number.isInteger(chainId) || chainId <= 0) throw new Error('chainId must be a positive integer')
-  const det = b.details as Record<string, unknown> | undefined
-  if (!det || !KINDS.includes(det.kind as DelegationKind)) throw new Error('details.kind must be subscription|stream')
-  const details: DelegationDetails = {
-    kind: det.kind as DelegationKind,
-    amount: String(det.amount ?? ''),
-    tokenSymbol: String(det.tokenSymbol ?? ''),
-    period: String(det.period ?? ''),
+  if (typeof b.safeAddress !== 'string' || !isAddress(b.safeAddress)) throw new Error('invalid safeAddress')
+  if (typeof b.messageHash !== 'string' || !isHex(b.messageHash)) throw new Error('invalid messageHash')
+  return {
+    chainId,
+    safeAddress: getAddress(b.safeAddress),
+    messageHash: b.messageHash,
+    organization: parseOrganization(b.organization),
   }
-  return { delegation, chainId, details, organization: parseOrganization(b.organization) }
+}
+
+/** App-chain public clients (Base Sepolia, …) for EIP-1271 + token reads, cached per chain. */
+const appClients = new Map<number, PublicClient>()
+function appChainClient(chainId: number): PublicClient | null {
+  const cached = appClients.get(chainId)
+  if (cached) return cached
+  const chain = findChain(chainId)
+  const url = rpcUrl(chainId)
+  if (!chain || !url) return null
+  const client = createPublicClient({ chain, transport: http(url) }) as PublicClient
+  appClients.set(chainId, client)
+  return client
+}
+
+/** Verify the Safe signed the message: EIP-1271 `isValidSignature(hash, sig)` == magic. */
+async function verifyEip1271(
+  client: PublicClient,
+  safe: Address,
+  messageHash: Hex,
+  signature: Hex,
+): Promise<boolean> {
+  try {
+    const res = await client.readContract({
+      address: safe,
+      abi: SAFE_IS_VALID_SIGNATURE_ABI,
+      functionName: 'isValidSignature',
+      args: [messageHash, signature],
+    })
+    return res.toLowerCase() === EIP1271_MAGIC
+  } catch {
+    return false
+  }
 }
 
 async function pinToPinata(jwt: string, content: unknown, name: string): Promise<string> {
@@ -144,13 +178,41 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function handlePublish(rt: Runtime, body: PublishBody): Promise<{ uri: string; result: unknown }> {
-  const doc = buildDelegationDocument({ delegation: body.delegation, details: body.details })
+  const app = appChainClient(body.chainId)
+  if (!app) throw new Error(`unsupported chainId: ${body.chainId}`)
+
+  // 1. Fetch the finalized Safe message (public tx-service) and reconstruct the struct.
+  const msg = await getSafeMessage(body.chainId, body.messageHash)
+  if (!msg) throw new Error('message not found on the Safe Transaction Service')
+  if (getAddress(msg.safe) !== body.safeAddress) throw new Error('message safe mismatch')
+  const delegation = delegationFromMessage(msg, body.chainId)
+  if (!delegation) throw new Error('not a finalized OurGlass delegation for this chain')
+
+  // 2. TRUST GATE: verify the aggregated signature ON-CHAIN against the Safe.
+  // Pass the DELEGATION typed-data hash, not the tx-service `messageHash`: the
+  // latter is already the wrapped SafeMessage hash, and the Safe's fallback
+  // handler wraps `_dataHash` into SafeMessage itself (double-wrapping fails).
+  const dataHash = typedDataHashFromMessage(msg)
+  if (!dataHash) throw new Error('could not hash the message typed data')
+  const ok = await verifyEip1271(app, body.safeAddress, dataHash, delegation.signature)
+  if (!ok) throw new Error('EIP-1271 verification failed')
+
+  // 3. Resolve + sanitize token metadata, build display details from the caveat.
+  const token = tokenFromDelegation(delegation, body.chainId)
+  if (!token) throw new Error('no known caveat in delegation')
+  const rawMeta = await readErc20Meta(app, token)
+  const meta = sanitizeTokenMeta({ address: token, ...rawMeta })
+  const details = detailsFromDelegation(delegation, body.chainId, { symbol: meta.symbol, decimals: meta.decimals })
+  if (!details) throw new Error('could not decode delegation details')
+
+  // 4. Pin the document and write the ontology (isTermCreated guards dedup the mint).
+  const doc = buildDelegationDocument({ delegation, details })
   const uri = await pinToPinata(rt.pinataJwt, doc, 'ourglass-delegation')
   const result = await publishDelegation(
     { chain: rt.chain, pinner: rt.pinner, config },
     {
-      delegator: { address: body.delegation.delegator, chainId: body.chainId },
-      recipient: { kind: 'caip10', address: body.delegation.delegate, chainId: body.chainId },
+      delegator: { address: delegation.delegator, chainId: body.chainId },
+      recipient: { kind: 'caip10', address: delegation.delegate, chainId: body.chainId },
       organization: body.organization,
       agreementUri: uri,
     },

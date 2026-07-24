@@ -25,6 +25,13 @@ export interface StoredDelegation {
     delegationHash: Hex
     // Subscription contract pinned to IPFS, hash bound to the signature salt
     agreement?: { cid: string; uri: string; termsHash: Hex }
+    // The Safe off-chain message hash for this delegation's signature. Lets
+    // finalize-on-open recover the finalized message from the Safe tx-service and
+    // poke the publisher — independent of when the Nth owner signs. (ADR 0005)
+    safeMessageHash?: Hex
+    // The org the proposer picked (owner of the payer's Safe), carried in the
+    // finalize poke to build the (Organization) owns (Safe) edge. Optional.
+    orgSelection?: { atomId?: Hex; name?: string }
     // Set once the delegation is recorded on Intuition — the DelegationJson atom,
     // used to deep-link to the Intuition portal. Absent until/unless published.
     intuition?: { atomId: Hex; network: 'testnet' | 'mainnet' }
