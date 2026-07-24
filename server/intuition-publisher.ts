@@ -33,9 +33,11 @@ import { isOriginAllowed, parseAllowedOrigins } from './cors'
  * document and writes the ontology. A compromised publisher can thus forge
  * nothing; it holds only a gas key. See ADR 0005.
  *
- * Env: INTUITION_ATTESTOR_PK (required), PINATA_JWT (required), INTUITION_NETWORK
- * (testnet|mainnet, default testnet), PORT (default 8787), ALLOWED_ORIGIN
- * (default *), PUBLISH_SECRET (optional — if set, require x-publish-secret).
+ * Env: INTUITION_ATTESTOR_PK (required), PINATA_JWT (required),
+ * INTUITION_PIN_API_KEY (required — pins atom metadata via the Intuition pin
+ * API), INTUITION_NETWORK (testnet|mainnet, default testnet), PORT (default
+ * 8787), ALLOWED_ORIGIN (default *), PUBLISH_SECRET (optional — if set, require
+ * x-publish-secret).
  */
 
 /** EIP-1271 magic value returned by `isValidSignature(bytes32,bytes)` on success. */
@@ -55,6 +57,7 @@ const SAFE_IS_VALID_SIGNATURE_ABI = [
 
 const pk = process.env.INTUITION_ATTESTOR_PK
 const pinataJwt = process.env.PINATA_JWT
+const pinApiKey = process.env.INTUITION_PIN_API_KEY
 const network = (process.env.INTUITION_NETWORK ?? 'testnet') as IntuitionNetwork
 // Own port var — platforms (Coolify, etc.) inject PORT for the main listener
 // (Caddy on :80 here); the publisher is internal, proxied at /intuition.
@@ -72,6 +75,7 @@ const config = getIntuitionNetwork(network)
 const missing: string[] = []
 if (!pk || !isHex(pk)) missing.push('INTUITION_ATTESTOR_PK')
 if (!pinataJwt) missing.push('PINATA_JWT')
+if (!pinApiKey) missing.push('INTUITION_PIN_API_KEY')
 
 interface Runtime {
   account: ReturnType<typeof privateKeyToAccount>
@@ -81,7 +85,7 @@ interface Runtime {
 }
 
 function buildRuntime(): Runtime | null {
-  if (!pk || !isHex(pk) || !pinataJwt) return null
+  if (!pk || !isHex(pk) || !pinataJwt || !pinApiKey) return null
   const account = privateKeyToAccount(pk)
   const transport = http(config.rpcUrl)
   const chain = createViemChain(
@@ -89,7 +93,7 @@ function buildRuntime(): Runtime | null {
     createWalletClient({ account, chain: config.chain, transport }),
     config.multiVault,
   )
-  return { account, chain, pinner: createGraphqlPinner(config.graphqlUrl), pinataJwt }
+  return { account, chain, pinner: createGraphqlPinner(pinApiKey), pinataJwt }
 }
 
 const runtime = buildRuntime()

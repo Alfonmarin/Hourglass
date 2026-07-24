@@ -16,7 +16,7 @@ import {
  * graph, signing with the funded attestor key.
  *
  * Usage:
- *   INTUITION_ATTESTOR_PK=0x... \
+ *   INTUITION_ATTESTOR_PK=0x... INTUITION_PIN_API_KEY=... \
  *   bun scripts/intuition-publish.ts <gator-delegations.json> \
  *     --org "intuition.box" [--org-url https://intuition.box] \
  *     [--network testnet] [--index 0]
@@ -71,6 +71,11 @@ async function main(): Promise<void> {
     throw new Error('INTUITION_ATTESTOR_PK must be set to a 0x-prefixed private key')
   }
 
+  const pinApiKey = process.env.INTUITION_PIN_API_KEY
+  if (!pinApiKey) {
+    throw new Error('INTUITION_PIN_API_KEY must be set to pin atom metadata')
+  }
+
   const config = getIntuitionNetwork(args.network)
   const account = privateKeyToAccount(pk as Hex)
   const transport = http(config.rpcUrl)
@@ -95,7 +100,7 @@ async function main(): Promise<void> {
   console.log(`Delegation ${delegation.meta.delegationHash} (${delegation.meta.label})`)
 
   const result = await publishDelegation(
-    { chain: createViemChain(publicClient, walletClient, config.multiVault), pinner: createGraphqlPinner(config.graphqlUrl), config },
+    { chain: createViemChain(publicClient, walletClient, config.multiVault), pinner: createGraphqlPinner(pinApiKey), config },
     input,
   )
 
