@@ -1,5 +1,6 @@
 import { getAddress, stringToHex, type Address, type Hex } from 'viem'
 import { pinThing as sdkPinThing, PIN_API_URL } from '@0xintuition/sdk'
+import { executeGraphQLRequest } from '@0xintuition/graphql'
 import type { OrganizationMeta, ThingMeta } from './network'
 
 /**
@@ -46,19 +47,17 @@ function assertIpfsUri(uri: string | undefined, name: string): string {
   return uri
 }
 
-const PIN_ORGANIZATION = `mutation pinOrganization($name: String!, $description: String!, $image: String!, $url: String!, $email: String!) {
-  pinOrganization(organization: { name: $name, description: $description, image: $image, url: $url, email: $email }) { uri }
+// $organization is a nested PinOrganizationInput wrapper, not flat args.
+// See docs.intuition.systems/docs/graphql-api/writes#pinorganization-mutation.
+const PIN_ORGANIZATION = `mutation PinOrganization($organization: PinOrganizationInput!) {
+  pinOrganization(organization: $organization) { uri }
 }`
 
-interface PinOrganizationResponse {
-  data?: { pinOrganization?: { uri?: string } }
-  errors?: { message: string }[]
-}
-
 /**
- * Pin an Organization to keep its atom typed `Organization` in the graph. The
- * SDK wraps only `pinThing`, so this hits the same pin endpoint + `apikey`
- * header directly with the schema's `pinOrganization` mutation.
+ * Pin an Organization so its atom stays typed `Organization` in the graph. The
+ * SDK wraps only `pinThing`, so this runs the schema's `pinOrganization` through
+ * the SDK's `executeGraphQLRequest`, which routes pin operations to the pin
+ * endpoint and sends the `apikey` header.
  */
 async function pinOrganizationDirect(
   org: OrganizationMeta,
@@ -66,17 +65,13 @@ async function pinOrganizationDirect(
   pinApiUrl: string,
 ): Promise<string> {
   if (!org.name) throw new Error('Pin failed — name is required')
-  const res = await fetch(pinApiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: pinApiKey },
-    body: JSON.stringify({ query: PIN_ORGANIZATION, variables: org }),
-  })
-  if (!res.ok) throw new Error(`Pin failed — HTTP ${res.status}`)
-  const body = (await res.json()) as PinOrganizationResponse
-  if (body.errors?.length) {
-    throw new Error(`Pin failed — GraphQL errors: ${JSON.stringify(body.errors)}`)
-  }
-  return assertIpfsUri(body.data?.pinOrganization?.uri, org.name)
+  const data = await executeGraphQLRequest<{ pinOrganization?: { uri?: string } }, unknown>(
+    PIN_ORGANIZATION,
+    { organization: org },
+    undefined,
+    { pinApiKey, pinApiUrl },
+  )
+  return assertIpfsUri(data.pinOrganization?.uri, org.name)
 }
 
 /**
