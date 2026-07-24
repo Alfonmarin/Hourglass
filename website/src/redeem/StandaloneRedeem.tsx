@@ -220,7 +220,7 @@ export function StandaloneRedeem() {
                     <button key={d.meta.delegationHash} onClick={() => selectDelegation(d)} className="w-full text-left">
                       <Card className="p-4 flex items-center justify-between gap-4 hover:bg-[#212B43] transition">
                         <Payee logo={d.delegation.delegator.slice(2, 4).toUpperCase()} tint={tintFor(d.delegation.delegator)} name={d.meta.label} addr={`from ${short(d.delegation.delegator)}`} />
-                        <span className="font-mono font-semibold text-ink whitespace-nowrap">{d.meta.amount} <span className="text-dim text-sm">USDC / {d.meta.period}</span></span>
+                        <span className="font-mono font-semibold text-ink whitespace-nowrap">{isStream(d) ? d.meta.ratePerPeriod : d.meta.amount} <span className="text-dim text-sm">USDC / {isStream(d) ? d.meta.ratePeriod : d.meta.period}</span></span>
                       </Card>
                     </button>
                   ))
