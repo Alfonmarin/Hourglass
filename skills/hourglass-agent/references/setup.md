@@ -69,6 +69,12 @@ Do not proceed until the balance is non-zero.
 ## 4. Hand the address to the Safe operator
 
 Give the agent **address** (not the key) to whoever controls the Safe. They paste it
-into the Hourglass Strategy tab as the *Agent address*, configure the recurring buy
-and the per-swap cap, and sign the mandate. Once signed, it is published on Intuition
+into Hourglass as the *Agent address* — the **Strategy** tab for a recurring DCA, or
+the **Limit order** tab for a single price-triggered buy — configure the mandate (the
+per-swap cap for a DCA; the max spend + trigger price for a limit order), and sign it.
+The mandate is a Safe message: a multisig Safe must reach its signing threshold before
+it finalizes. Once finalized it is published on Intuition (by the publisher backend),
 and the agent can discover it — see `discovery.md`.
+
+The Safe operator then copies the **recap JSON** the tab emits after signing and hands
+it back to you; it names the mandate (by `delegationHash`) the runner will execute.

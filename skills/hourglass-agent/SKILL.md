@@ -26,6 +26,25 @@ Mental model — read `references/context.md` first if any of this is unclear:
   a little native ETH. That is the *only* value the agent custodies — gas, not the
   treasury.
 
+## The handoff (agent ⇄ operator)
+
+This skill drives the agent, but signing the mandate is the operator's job in the Safe
+App — so the flow hands back and forth once. The whole loop, from the operator's seat:
+
+1. **Load this skill.** The agent sets up its wallet and reports back its **address**
+   (steps 1–3 below). You fund that address with a little gas.
+2. **You open the Safe App**, paste the agent address, create the delegation (Strategy
+   or Limit order tab), and sign it — a multisig Safe needs its threshold of signers.
+   The publisher backend then publishes the finalized mandate on Intuition.
+3. **You come back to this skill** with the recap JSON the tab emitted. The agent
+   discovers the mandate on Intuition and executes it (steps 5–6).
+
+The agent does **not** run unattended between sessions — there is no built-in
+scheduler. A limit order polls the price for as long as the run is alive and fills once
+the dip hits; a DCA fires once per invocation. To keep watching, keep the run alive or
+wire it to a scheduler you own (cron, a runtime wake). Re-loading the skill resumes from
+discovery — the mandate lives on Intuition, not in this session.
+
 ## Quick start checklist
 
 Do these in order. Steps 1–3 are one-time setup; steps 5–6 repeat on the mandate's
@@ -40,12 +59,15 @@ cadence.
 3. **Fund the wallet with a little ETH** on the mandate's chain (Base or Ethereum
    mainnet). A few dollars of ETH covers many redeems. Ask the human operator to
    send it — the agent does not self-fund. Verify the balance before proceeding.
-4. **Hand the address to the Safe operator.** They paste it into the Hourglass
-   Strategy tab as the *Agent address* and sign the mandate (a multisig action).
-   Nothing below works until the mandate is signed and published.
+4. **Hand the address to the Safe operator.** They paste it into Hourglass as the
+   *Agent address* (Strategy tab for a DCA, Limit order tab for a limit order) and sign
+   the mandate — a multisig Safe needs its signing threshold. Nothing below works until
+   the mandate is finalized and published. They then hand you back the **recap JSON**
+   the tab emits (it names the mandate by `delegationHash`).
 5. **Discover the mandate.** Read the delegations the Safe addressed to your agent
-   from the Intuition graph. See `references/discovery.md`. If none appear, the
-   mandate isn't published yet — wait and retry.
+   from the Intuition graph, and match the one in the recap by `delegationHash`. See
+   `references/discovery.md`. If none appear, the mandate isn't published yet (threshold
+   not reached, or indexing lag) — wait and retry.
 6. **Execute the buy.** Build the swap (Uniswap Trading API, CLASSIC routing + legacy
    approval) and redeem it — approve + swap in one atomic transaction. For a **DCA**,
    run this on the mandate's cadence (a cron/scheduler you own; this skill does not run
