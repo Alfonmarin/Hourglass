@@ -510,7 +510,7 @@ export default function CreateStream() {
                 <option value="" disabled>Select a token…</option>
                 {safeTokens.tokens.map((t) => (
                   <option key={t.address} value={t.address}>
-                    {t.symbol} — {trimAmount(formatUnits(t.balance, t.decimals))} held
+                    {t.symbol} — {trimAmount(formatUnits(t.balance, t.decimals))} {t.symbol}
                   </option>
                 ))}
               </select>
