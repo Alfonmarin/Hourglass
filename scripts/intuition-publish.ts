@@ -51,7 +51,7 @@ function parseArgs(argv: string[]): Args {
   return {
     file,
     org: flag('org') ?? 'OurGlass',
-    orgUrl: flag('org-url') ?? 'https://ourglass.intuition.box/',
+    orgUrl: flag('org-url') ?? 'https://hourglass.box/',
     network,
     index: Number(flag('index') ?? '0'),
   }

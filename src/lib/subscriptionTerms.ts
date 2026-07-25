@@ -21,7 +21,7 @@ export interface SubscriptionTerms {
 }
 
 export interface AgreementDocument {
-  schema: 'safe-subscriptions/agreement@1'
+  schema: 'hourglass/subscription-agreement@1'
   id: string
   createdAt: string
   chainId: number
@@ -83,7 +83,7 @@ export function buildAgreementDocument(params: {
   createdAt?: string
 }): AgreementDocument {
   return {
-    schema: 'safe-subscriptions/agreement@1',
+    schema: 'hourglass/subscription-agreement@1',
     id: params.id,
     createdAt: params.createdAt ?? new Date().toISOString(),
     chainId: params.chainId,

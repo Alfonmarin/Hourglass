@@ -79,7 +79,7 @@ const delegateToPin: ThingMeta = {
   description:
     'Predicate: the subject account grants the object account a delegated, capped authority to pull funds on its behalf.',
   image: '',
-  url: 'https://ourglass.intuition.box/',
+  url: 'https://hourglass.box/',
 }
 
 export const INTUITION_NETWORKS: Record<IntuitionNetwork, IntuitionNetworkConfig> = {

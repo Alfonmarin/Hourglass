@@ -211,7 +211,7 @@ async function handlePublish(rt: Runtime, body: PublishBody): Promise<{ uri: str
 
   // 4. Pin the document and write the ontology (isTermCreated guards dedup the mint).
   const doc = buildDelegationDocument({ delegation, details })
-  const uri = await pinToPinata(rt.pinataJwt, doc, 'ourglass-delegation')
+  const uri = await pinToPinata(rt.pinataJwt, doc, 'hourglass-delegation')
   const result = await publishDelegation(
     { chain: rt.chain, pinner: rt.pinner, config },
     {

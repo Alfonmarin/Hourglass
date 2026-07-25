@@ -52,7 +52,7 @@ and the **app chain** (`chainId`, e.g. Base Sepolia) via a public RPC for EIP-12
 | `PINATA_JWT` | yes | — | Pins the DelegationJson document (server-side; no `VITE_`). |
 | `INTUITION_NETWORK` | no | `testnet` | `testnet` (13579) or `mainnet` (1155). |
 | `INTUITION_PUBLISHER_PORT` | no | `8787` | Own var; a platform-injected `PORT` would otherwise repoint the listener. |
-| `ALLOWED_ORIGIN` | no | apex + `*.ourglass.intuition.box` + localhost | Comma-separated; supports `*` and subdomain wildcards. Default accepts every PR preview subdomain. |
+| `ALLOWED_ORIGIN` | no | apex + `*.hourglass.box` + localhost | Comma-separated; supports `*` and subdomain wildcards. Default accepts every PR preview subdomain. |
 | `PUBLISH_SECRET` | no | — | If set, require `x-publish-secret` to match. |
 
 ## Deploy
@@ -82,7 +82,7 @@ just degrades to "publishing not configured".
 To run it separately instead, use `server/Dockerfile` (build context = repo root)
 as its own Coolify service, set the env vars above on that service, and point the
 Safe App's `VITE_INTUITION_PUBLISHER_URL` build var at its URL. Its default CORS
-accepts `https://*.ourglass.intuition.box`, so previews work without per-PR setup.
+accepts `https://*.hourglass.box`, so previews work without per-PR setup.
 
 ## Abuse note
 

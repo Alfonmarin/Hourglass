@@ -1,13 +1,13 @@
 ---
-title: What is OurGlass
+title: What is HourGlass
 description: Recurring on-chain payments for Safe — sign once, capped on-chain, non-custodial, revocable.
 icon: Hourglass
 ---
 
-OurGlass turns a recurring payment into a **single signature**. A payer signs one
+HourGlass turns a recurring payment into a **single signature**. A payer signs one
 EIP-712 delegation that lets a receiver pull a bounded amount of an ERC-20 token
 over time. The bound is enforced **on-chain** by MetaMask's audited Delegation
-Framework — OurGlass adds no custom on-chain logic.
+Framework — HourGlass adds no custom on-chain logic.
 
 ## The guarantees
 
@@ -16,7 +16,7 @@ Framework — OurGlass adds no custom on-chain logic.
 - **Capped on-chain.** The amount and cadence are enforced by a caveat, not by a
   backend. The receiver can never pull more than the signed terms allow.
 - **Non-custodial.** Funds stay in the payer's Safe until the moment of charge.
-  OurGlass never takes custody.
+  HourGlass never takes custody.
 - **Revocable.** The payer can cancel any agreement on-chain at any time.
 - **Auditable.** The human-readable agreement is pinned to IPFS, and its hash is
   the delegation salt — so the signature is bound to the exact terms.
@@ -27,7 +27,7 @@ Framework — OurGlass adds no custom on-chain logic.
 
 ## Two products, one model
 
-OurGlass offers two payment shapes, both built on the same delegation primitive:
+HourGlass offers two payment shapes, both built on the same delegation primitive:
 
 | | **Subscription** | **Stream** |
 |---|---|---|

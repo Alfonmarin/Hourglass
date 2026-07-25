@@ -10,8 +10,8 @@ import { isOriginAllowed, parseAllowedOrigins } from '../../server/cors'
 describe('parseAllowedOrigins', () => {
   test('defaults cover apex, preview wildcard, and local dev', () => {
     expect(parseAllowedOrigins(undefined)).toEqual([
-      'https://ourglass.intuition.box',
-      'https://*.ourglass.intuition.box',
+      'https://hourglass.box',
+      'https://*.hourglass.box',
       'http://localhost:5173',
     ])
   })
@@ -25,19 +25,19 @@ describe('isOriginAllowed', () => {
   const def = parseAllowedOrigins(undefined)
 
   test('accepts the apex and every preview subdomain', () => {
-    expect(isOriginAllowed('https://ourglass.intuition.box', def)).toBe(true)
-    expect(isOriginAllowed('https://21.ourglass.intuition.box', def)).toBe(true)
-    expect(isOriginAllowed('https://feat-x.ourglass.intuition.box', def)).toBe(true)
+    expect(isOriginAllowed('https://hourglass.box', def)).toBe(true)
+    expect(isOriginAllowed('https://21.hourglass.box', def)).toBe(true)
+    expect(isOriginAllowed('https://feat-x.hourglass.box', def)).toBe(true)
     expect(isOriginAllowed('http://localhost:5173', def)).toBe(true)
   })
 
   test('rejects look-alike and unrelated origins', () => {
-    expect(isOriginAllowed('https://ourglass.intuition.box.evil.com', def)).toBe(false)
+    expect(isOriginAllowed('https://hourglass.box.evil.com', def)).toBe(false)
     expect(isOriginAllowed('https://evil.com', def)).toBe(false)
     // wildcard must not match the bare suffix as its own host
-    expect(isOriginAllowed('https://.ourglass.intuition.box', def)).toBe(false)
+    expect(isOriginAllowed('https://.hourglass.box', def)).toBe(false)
     // scheme must match
-    expect(isOriginAllowed('http://21.ourglass.intuition.box', def)).toBe(false)
+    expect(isOriginAllowed('http://21.hourglass.box', def)).toBe(false)
   })
 
   test('"*" allows anything', () => {
