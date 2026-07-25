@@ -4,12 +4,13 @@ import { ipfsToHttp } from '../lib/subscriptionTerms'
 import { portalAtomUrl } from '../lib/intuition'
 import { buildRevokeTxs } from '../lib/revoke'
 import { updateDelegationStatus, removeDelegation, type StoredDelegation } from '../lib/storage'
+import { isLimitOrderRedeemed } from '../lib/limitOrderStatus'
 import { Card, Btn, StatusBadge, Payee, Mono, CopyChip, type Status } from '../ui/components'
 import { IconX, IconStop, IconCube, IconExt, IconLock, IconCal, IconRepeat } from '../ui/icons'
 import { chainName } from '../config/supported-chains'
 
-const statusOf = (s: StoredDelegation['meta']['status']): Status =>
-  s === 'signed' ? 'active' : s === 'revoked' ? 'revoked' : 'pending'
+const statusOf = (s: StoredDelegation['meta']['status'], redeemed = false): Status =>
+  redeemed ? 'redeemed' : s === 'signed' ? 'active' : s === 'revoked' ? 'revoked' : 'pending'
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 const tintFor = (addr: string) => {
   const palette = ['#3B82F6', '#22D3EE', '#8B5CF6', '#34D399', '#FB7185', '#FBBF24']
@@ -40,7 +41,15 @@ export function SubscriptionDetail({
 }) {
   const { sdk, safe } = useSafeAppsSDK()
   const [revoking, setRevoking] = useState(false)
-  const status = statusOf(d.meta.status)
+  // A one-shot limit order that has already fired reads as redeemed on-chain.
+  const [redeemed, setRedeemed] = useState(false)
+  useEffect(() => {
+    if (d.meta.strategyKind !== 'limitOrder' || d.meta.status !== 'signed') return
+    let cancelled = false
+    isLimitOrderRedeemed(d.meta.chainId, d.meta.delegationHash).then((r) => { if (!cancelled) setRedeemed(r) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [d.meta.strategyKind, d.meta.status, d.meta.chainId, d.meta.delegationHash])
+  const status = statusOf(d.meta.status, redeemed)
   const stream = d.meta.scopeType === 'erc20Streaming'
   const payeeAddr = d.meta.recipient ?? d.delegation.delegate
   const httpUri =
@@ -200,7 +209,7 @@ export function SubscriptionDetail({
         <div className="mt-5 flex items-center gap-2">
           <Mono className="text-[11px] text-faint mr-auto">{short(d.meta.delegationHash)}</Mono>
           <CopyChip value={JSON.stringify(d, null, 2)} label="Copy JSON" />
-          {d.meta.status === 'signed' && (
+          {d.meta.status === 'signed' && !redeemed && (
             <Btn kind="danger" size="sm" icon={<IconStop size={14} />} onClick={handleRevoke} disabled={revoking}>
               {revoking ? 'Revoking…' : 'Revoke'}
             </Btn>
