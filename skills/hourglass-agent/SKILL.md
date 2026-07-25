@@ -80,6 +80,19 @@ invoke it.
 - **The cap is the ceiling.** Never try to swap more than the per-swap cap; the
   `erc20BalanceChange` enforcer reverts the redeem if you do. Simulate before sending.
 
+## Other delegation types (forward-looking)
+
+Discovery is **type-agnostic**: `discoverIncomingDelegations` returns every
+delegation addressed to the agent, each tagged with a `scopeType`. This skill
+currently details **DCA** (`scopeType: 'strategyMandate'`, `strategyKind: 'dca'`).
+Hourglass supports other delegation types the team ships — yield positions
+(`exactExecution`, a fixed-calldata replay), subscriptions and streams
+(`erc20PeriodTransfer` / `erc20Streaming`, a `transfer` redeem). They follow the
+same shape: **discover → route on `scopeType` → execute**. When those types are
+stabilized, add a branch here and a matching `references/<type>.md`; the discover
+and redeem layers are already generic. Until then, this skill handles DCA and skips
+mandates of other types rather than guessing at their execution.
+
 ## Reference files
 
 - `references/context.md` — the Safe + delegation model, non-custodial guarantees,
