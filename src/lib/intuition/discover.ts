@@ -138,6 +138,8 @@ export function findBalanceChangeCaveat(
   delegation: DelegationStruct,
   chainId: number,
 ): { enforcer: Address; terms: Hex } | null {
+  // The strategy rail routes through the HourGlass enforcer instance (see
+  // environment.ts), so mandates carry that address — match it.
   const enforcers = [getAddresses(chainId).hourglass?.erc20BalanceChangeEnforcer]
     .filter((a): a is Address => Boolean(a))
     .map((a) => a.toLowerCase())
