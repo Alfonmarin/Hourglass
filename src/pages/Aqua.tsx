@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
-import { formatUnits, parseUnits, type Address } from 'viem'
+import { formatUnits, parseUnits, type Address, type Hex } from 'viem'
 import { useSafeTokens } from '../hooks/useSafeTokens'
 import { useAquaPositions, type AquaPosition } from '../hooks/useAquaPositions'
 import type { HeldToken } from '../lib/safe-balances'
@@ -9,7 +9,7 @@ import { buildAmmProgram, randomSalt } from '../lib/aqua/program'
 import { buildAquaOrder, strategyHash } from '../lib/aqua/order'
 import { buildShipTxs, buildDockTxs } from '../lib/aqua/ship'
 import { saveAquaStrategy, setAquaStrategyStatus } from '../lib/aqua/positions'
-import { Card, Btn, Mono } from '../ui/components'
+import { Card, Btn, CopyChip } from '../ui/components'
 import { Block, Field, PreviewRow } from '../ui/form'
 import { IconCube, IconCheck, IconAlert, IconLock } from '../ui/icons'
 
@@ -32,6 +32,7 @@ export default function Aqua() {
   const [amount1, setAmount1] = useState('')
   const [feeBps, setFeeBps] = useState(FEE_PRESETS[1].feeBps)
   const [step, setStep] = useState<ShipStep>('idle')
+  const [shippedHash, setShippedHash] = useState<Hex | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const raw = (value: string, token: HeldToken | null): bigint => {
@@ -103,6 +104,7 @@ export default function Aqua() {
         createdAt: new Date().toISOString(),
         status: 'shipped',
       })
+      setShippedHash(hash)
       setStep('done')
       positions.refetch()
     } catch (err) {
@@ -135,6 +137,7 @@ export default function Aqua() {
   function reset() {
     setAmount0('')
     setAmount1('')
+    setShippedHash(null)
     setStep('idle')
   }
 
@@ -243,11 +246,17 @@ export default function Aqua() {
             </div>
 
             <PreviewRow label="Program">
-              {preview ? <Mono className="text-xs text-dim">{preview.program}</Mono> : <span className="text-[11px] text-faint">—</span>}
+              {preview ? (
+                <CopyChip value={preview.program} className="max-w-full" />
+              ) : (
+                <span className="text-[11px] text-faint">—</span>
+              )}
             </PreviewRow>
             <PreviewRow label="Strategy">
               {preview ? (
-                <Mono className="text-xs text-dim">{short(preview.hash)}</Mono>
+                // Shows the short form but copies the full 32 bytes — a truncated
+                // hash is not something you can paste into an explorer or a cast call.
+                <CopyChip value={preview.hash} label={short(preview.hash)} className="max-w-full" />
               ) : (
                 <span className="text-[11px] text-faint">—</span>
               )}
@@ -263,6 +272,12 @@ export default function Aqua() {
                 <div className="flex items-center gap-2 text-sm font-medium text-active">
                   <IconCheck size={16} /> Strategy shipped.
                 </div>
+                {shippedHash && (
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-faint">Shipped under</div>
+                    <CopyChip value={shippedHash} label={short(shippedHash)} className="max-w-full" />
+                  </div>
+                )}
                 <Btn kind="secondary" onClick={reset} className="w-full">
                   Ship another
                 </Btn>
@@ -397,7 +412,11 @@ function Positions({
                     · {(position.strategy.feeBps / 10_000_000).toFixed(2)}%
                   </span>
                 </div>
-                <Mono className="text-[11px] text-faint">{short(position.strategy.strategyHash)}</Mono>
+                <CopyChip
+                  value={position.strategy.strategyHash}
+                  label={short(position.strategy.strategyHash)}
+                  className="mt-1"
+                />
               </div>
               <div className="shrink-0 text-right">
                 {position.isDocked ? (
@@ -433,13 +452,30 @@ function Positions({
               </p>
             )}
 
-            {!position.isDocked && (
-              <div className="mt-3 pt-3 border-t border-line">
+            <div className="mt-3 pt-3 border-t border-line flex items-center gap-2 flex-wrap">
+              {!position.isDocked && (
                 <Btn kind="secondary" onClick={() => onDock(position)}>
                   Dock and revoke
                 </Btn>
-              </div>
-            )}
+              )}
+              {/* Everything an independent check needs: rawBalances() takes the
+                  hash, and SwapVM.quote() needs the whole order to price it. */}
+              <CopyChip
+                value={JSON.stringify(
+                  {
+                    chainId: position.strategy.chainId,
+                    aqua: AQUA_ADDRESS[position.strategy.chainId],
+                    app: position.strategy.app,
+                    strategyHash: position.strategy.strategyHash,
+                    order: position.strategy.order,
+                    tokens: position.strategy.tokens.map((t) => t.address),
+                  },
+                  null,
+                  2,
+                )}
+                label="Copy order JSON"
+              />
+            </div>
           </Card>
         ))}
       </div>
