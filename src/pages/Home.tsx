@@ -5,7 +5,6 @@ import { DeleGatorModuleFactoryABI, SafeABI } from '../config/abis'
 import { getAddresses } from '../config/addresses'
 import { buildModuleInstallTxs, DEFAULT_SALT } from '../lib/module'
 import { getDelegations, type StoredDelegation } from '../lib/storage'
-import { useFinalizePending } from '../hooks/useFinalizePending'
 import { portalAtomUrl } from '../lib/intuition'
 import { periodToSeconds, isPeriodType } from '../lib/enforcers'
 import { SubscriptionDetail } from './SubscriptionDetail'
@@ -87,9 +86,6 @@ function SubCard({ d, onOpen }: { d: StoredDelegation; onOpen: () => void }) {
 
 export default function Home({ onNavigate }: { onNavigate: (page: Page) => void }) {
   const { sdk, safe } = useSafeAppsSDK()
-  // Finalize-on-open: recover finalized delegations from the Safe tx-service and
-  // index them, independent of when the Nth owner signed (ADR 0005).
-  useFinalizePending()
   const [moduleStatus, setModuleStatus] = useState<'loading' | 'installed' | 'not-installed' | 'error'>('loading')
   const [moduleAddress, setModuleAddress] = useState<Address | null>(null)
   const [installing, setInstalling] = useState(false)
