@@ -5,27 +5,31 @@ import { addresses } from '../config/addresses'
  * Get the SmartAccountsEnvironment for the current chain.
  *
  * Resolves all contract addresses (DelegationManager, enforcers, etc.) from the SDK's
- * built-in deployment registry, then — on chains where OurGlass has deployed its own
- * audited enforcer instances — overrides the three enforcers OurGlass delegations use
- * so new delegations reference the OurGlass instances. The period enforcer's
- * TransferredInPeriod events are then attributable to OurGlass by emitter address (the
+ * built-in deployment registry, then — on chains where Hourglass has deployed its own
+ * audited enforcer instances — overrides the three enforcers Hourglass delegations use
+ * so new delegations reference the Hourglass instances. The period enforcer's
+ * TransferredInPeriod events are then attributable to Hourglass by emitter address (the
  * analytics marker; see spec/plan-analytics.md and
- * spec/ourglass-enforcer-instances.md).
+ * spec/hourglass-enforcer-suite.md).
  *
- * Chains without an `ourglass` block fall through to the canonical SDK addresses.
+ * `addresses[chainId].hourglass` is a registry of all 37 deployed instances, but only the
+ * three below are overridden. Adding a key there does not change what gets signed; routing
+ * another delegation type through an Hourglass instance means adding it here, deliberately.
+ *
+ * Chains without an `hourglass` block fall through to the canonical SDK addresses.
  */
 export function getEnvironment(chainId: number) {
   const env = getSmartAccountsEnvironment(chainId)
-  const ourglass = addresses[chainId]?.ourglass
-  if (!ourglass) return env
+  const hourglass = addresses[chainId]?.hourglass
+  if (!hourglass) return env
 
   return {
     ...env,
     caveatEnforcers: {
       ...env.caveatEnforcers,
-      ERC20PeriodTransferEnforcer: ourglass.erc20PeriodTransferEnforcer,
-      TimestampEnforcer: ourglass.timestampEnforcer,
-      ERC20StreamingEnforcer: ourglass.erc20StreamingEnforcer,
+      ERC20PeriodTransferEnforcer: hourglass.erc20PeriodTransferEnforcer,
+      TimestampEnforcer: hourglass.timestampEnforcer,
+      ERC20StreamingEnforcer: hourglass.erc20StreamingEnforcer,
     },
   }
 }

@@ -77,7 +77,7 @@ export function findPeriodTransferCaveat(
   chainId: number,
 ): { enforcer: Address; terms: Hex } | null {
   const addrs = getAddresses(chainId)
-  const enforcers = [addrs.erc20PeriodTransferEnforcer, addrs.ourglass?.erc20PeriodTransferEnforcer]
+  const enforcers = [addrs.erc20PeriodTransferEnforcer, addrs.hourglass?.erc20PeriodTransferEnforcer]
     .filter((a): a is Address => Boolean(a))
     .map((a) => a.toLowerCase())
   return delegation.caveats.find((c) => enforcers.includes(c.enforcer.toLowerCase())) ?? null
@@ -109,7 +109,7 @@ export function findStreamingCaveat(
   delegation: DelegationStruct,
   chainId: number,
 ): { enforcer: Address; terms: Hex } | null {
-  const enforcers = [CANONICAL_STREAMING_ENFORCER, getAddresses(chainId).ourglass?.erc20StreamingEnforcer]
+  const enforcers = [CANONICAL_STREAMING_ENFORCER, getAddresses(chainId).hourglass?.erc20StreamingEnforcer]
     .filter((a): a is Address => Boolean(a))
     .map((a) => a.toLowerCase())
   return delegation.caveats.find((c) => enforcers.includes(c.enforcer.toLowerCase())) ?? null
