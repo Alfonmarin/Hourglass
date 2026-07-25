@@ -1,4 +1,4 @@
-export const appName = 'OurGlass';
+export const appName = 'HourGlass';
 export const siteUrl = 'https://hourglass.box';
 export const docsRoute = '/docs';
 export const blogRoute = '/blog';

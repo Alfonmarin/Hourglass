@@ -285,7 +285,7 @@ function SlidePositioning() {
       <div className="mt-10 grid grid-cols-2 max-w-3xl">
         <div className="pb-3 pr-6 text-sm font-bold tracking-wide uppercase text-dim">Sablier</div>
         <div className="pb-3 text-sm font-bold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>
-          OurGlass
+          HourGlass
         </div>
         <Compare left="Continuous streams, by the second" right="Discrete charges, per agreed period" />
         <Compare left="Funds deposited into the stream up front" right="Funds stay in the treasury — no escrow" />
@@ -293,7 +293,7 @@ function SlidePositioning() {
         <Compare left="A stream is an NFT" right="An agreement is signed terms, pinned to IPFS" />
       </div>
       <p className="mt-10 text-lg text-ink font-medium">
-        Sablier melts money through time. <span style={{ color: 'var(--accent)' }}>OurGlass lets you take what's yours, on time.</span>
+        Sablier melts money through time. <span style={{ color: 'var(--accent)' }}>HourGlass lets you take what's yours, on time.</span>
       </p>
     </div>
   )
@@ -487,7 +487,7 @@ export default function Pitch() {
       </main>
 
       <footer className="flex items-center justify-between px-8 md:px-20 pb-6 max-w-6xl w-full mx-auto">
-        <div className="text-[11px] text-faint tracking-wide">OurGlass — Design for Builders</div>
+        <div className="text-[11px] text-faint tracking-wide">HourGlass — Design for Builders</div>
         <div className="flex items-center gap-1.5" role="tablist" aria-label="Slides">
           {SLIDES.map((s, i) => (
             <button

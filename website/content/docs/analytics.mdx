@@ -4,30 +4,30 @@ description: On-chain, verifiable analytics — and the attribution problem it h
 icon: ChartLine
 ---
 
-OurGlass aims for a **decentralized, verifiable** analytics surface: charge count
+HourGlass aims for a **decentralized, verifiable** analytics surface: charge count
 and token volume over time, broken down by agreement, receiver, payer, and token —
 all derived from public on-chain data, with no private backend required.
 
 ## The attribution problem
 
-OurGlass has no contract of its own, and it is local-first (agreements live in the
+HourGlass has no contract of its own, and it is local-first (agreements live in the
 payer's `localStorage`). A charge is a call to the **shared** `DelegationManager`
-plus an ERC-20 `Transfer`. Nothing on-chain says "OurGlass": the enforcer
+plus an ERC-20 `Transfer`. Nothing on-chain says "HourGlass": the enforcer
 addresses are shared across every app on the Delegation Framework, parties vary
 per agreement, and the salt is unguessable. So every analytics approach reduces to
-one question: **how do we plant an OurGlass-attributable marker on-chain that
+one question: **how do we plant an HourGlass-attributable marker on-chain that
 needs no central registry?**
 
 ## The marker: redeploy the audited enforcers
 
-Deploy OurGlass's **own instances** of MetaMask's audited enforcers (unmodified
+Deploy HourGlass's **own instances** of MetaMask's audited enforcers (unmodified
 bytecode) and route new agreements to them, then index those contracts' events.
 The emitter address of a caveat event is the enforcer instance — so attribution
 becomes a one-key filter (`WHERE contract_address = <our enforcer>`) with **no
 central list of delegation hashes**. This works precisely because the app is
 local-first.
 
-This now spans **both** payment shapes, so OurGlass maintains two self-deployed
+This now spans **both** payment shapes, so HourGlass maintains two self-deployed
 instances:
 
 - the `ERC20PeriodTransferEnforcer` for [subscriptions](/docs/concepts/subscriptions);
@@ -77,7 +77,7 @@ From these events, filtered to our enforcer instances:
 ## Indexing
 
 - **Shipped now — direct client-side reads.** The [analytics page](/analytics)
-  reads the per-charge events straight from the OurGlass enforcer instances via
+  reads the per-charge events straight from the HourGlass enforcer instances via
   `eth_getLogs`, decodes them in the browser, and derives the metrics above. No
   backend, no subgraph, no `localStorage` dependency — it works because
   attribution is just the emitter address.
