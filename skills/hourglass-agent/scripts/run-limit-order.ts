@@ -10,10 +10,10 @@
  *
  * Flow: discover the mandate addressed to this agent on Intuition, match the one in
  * the operator's instruction (recap JSON from the Limit order tab), poll the Uniswap
- * quote until the expected output meets the enforced min-received, then redeem
- * approve+swap atomically AS THE SAFE. The router's minimum-out is set to the same
- * min-received so a price move between quote and redeem fails the swap gracefully
- * instead of reverting the whole redeem.
+ * quote until the expected output meets the enforced min-received, then redeem the
+ * swap AS THE SAFE. The swap pulls the funding token via Permit2, so the Safe must
+ * hold a standing Permit2 allowance for the router (a one-time setup, not part of the
+ * redeem); the mandate authorises only the price-bounded swap.
  *
  * Env: AGENT_PRIVATE_KEY, UNISWAP_API_KEY, INTUITION_NETWORK (mainnet|testnet),
  *      optional RPC_URL, optional POLL_SECONDS (default 60), optional MAX_POLLS
@@ -24,7 +24,7 @@
 import { readFileSync } from 'node:fs'
 import {
   createPublicClient, createWalletClient, http, erc20Abi, isAddress,
-  formatUnits, getAddress, hexToBigInt, sliceHex, encodeFunctionData,
+  formatUnits, getAddress, hexToBigInt, sliceHex,
   keccak256, encodePacked, encodeAbiParameters, toHex,
   type Address, type Hex, type Chain, type PublicClient, type WalletClient,
 } from 'viem'
@@ -53,12 +53,6 @@ const BALANCE_CHANGE_ENFORCER: Record<number, Address> = {
 const LIMITED_CALLS_ENFORCER: Record<number, Address> = {
   [mainnet.id]: '0x0c6a3a33d02c7bEb6B066960CE92DF8CC8EA35C8',
   [base.id]: '0x0c6a3a33d02c7bEb6B066960CE92DF8CC8EA35C8',
-}
-
-// Uniswap Universal Router — the swap target and the approve spender.
-const UNIVERSAL_ROUTER: Record<number, Address> = {
-  [mainnet.id]: '0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af',
-  [base.id]: '0x6fF5693b99212Da76ad316178A184AB56D299b43',
 }
 
 const CHAINS: Record<number, Chain> = {
@@ -93,16 +87,13 @@ interface DelegationStruct {
 }
 interface DelegationDocument { name?: string; description?: string; delegation: DelegationStruct }
 
-/** The operator's instruction copied from the Limit order tab (the recap JSON).
- * A limit order is TWO delegations: the swap carries the strategy, the approve
- * grants the router its allowance. The agent redeems both. */
+/** The operator's instruction copied from the Limit order tab (the recap JSON). */
 interface Instruction {
   hourglassStrategy: 'limitOrder'
   chainId: number
   safe: Address
   agent: Address
-  swapDelegationHash: Hex
-  approveDelegationHash: Hex
+  delegationHash: Hex
   fundingToken: Address
   targetToken: Address
   maxSpend: string
@@ -176,34 +167,30 @@ function hasLimitedCalls(d: DelegationStruct, chainId: number): boolean {
   return enforcer !== undefined && d.caveats.some((c) => c.enforcer.toLowerCase() === enforcer)
 }
 
-/** A limit order, reassembled from its two delegations. */
 interface DiscoveredOrder {
-  swap: DelegationStruct
-  approve: DelegationStruct
+  delegation: DelegationStruct
   fundingToken: Address
   targetToken: Address
   maxSpend: bigint
   minReceived: bigint
+  delegationHash: Hex
 }
 
-/** Discover ALL delegations addressed to `agent`, keyed by delegationHash. The
- * caller reassembles an order by matching the recap's swap + approve hashes — the
- * approve delegation has no balance-change/limitedCalls caveat, so it can only be
- * found by hash, not by shape. */
-async function discoverByHash(
+/** Discover limit-order mandates addressed to `agent` on `chainId`. */
+async function discoverOrders(
   agent: Address, chainId: number, network: 'mainnet' | 'testnet',
-): Promise<Map<string, DelegationStruct>> {
+): Promise<DiscoveredOrder[]> {
   const cfg = INTUITION[network]
   const { atoms } = await gql<{ atoms: { term_id: string }[] }>(cfg.graphqlUrl, ATOM_BY_DATA, { data: caip10Uri(chainId, agent) })
   const recipientAtomIds = atoms.map((a) => a.term_id)
-  const byHash = new Map<string, DelegationStruct>()
-  if (recipientAtomIds.length === 0) return byHash
+  if (recipientAtomIds.length === 0) return []
 
   const rels = await gql<{ triples: { term_id: string }[] }>(cfg.graphqlUrl, RELATIONSHIPS, { objectIds: recipientAtomIds, pred: cfg.delegateTo })
-  if (rels.triples.length === 0) return byHash
+  if (rels.triples.length === 0) return []
 
   const ctx = await gql<{ triples: { subject: { data: string } }[] }>(cfg.graphqlUrl, CONTEXT, { relIds: rels.triples.map((t) => t.term_id), pred: cfg.inContextOf })
 
+  const out: DiscoveredOrder[] = []
   for (const t of ctx.triples) {
     const uri = t.subject?.data
     if (!uri || !uri.startsWith('ipfs://')) continue
@@ -213,32 +200,24 @@ async function discoverByHash(
       const doc = (await res.json()) as DelegationDocument
       const delegation = doc?.delegation
       if (!delegation?.delegate) continue
-      byHash.set(computeDelegationHash(delegation).toLowerCase(), delegation)
+      // A limit order has BOTH bounds (Decrease funding + Increase target) and a
+      // limitedCalls cap. Without limitedCalls it's a DCA — skip it here.
+      if (!hasLimitedCalls(delegation, chainId)) continue
+      const bounds = balanceChangeCaveats(delegation, chainId).map((c) => decodeBalanceChangeTerms(c.terms))
+      const decrease = bounds.find((b) => b.enforceDecrease)
+      const increase = bounds.find((b) => !b.enforceDecrease)
+      if (!decrease || !increase) continue // not a well-formed limit order
+      out.push({
+        delegation,
+        fundingToken: decrease.token,
+        targetToken: increase.token,
+        maxSpend: decrease.amount,
+        minReceived: increase.amount,
+        delegationHash: computeDelegationHash(delegation),
+      })
     } catch { /* skip unreadable */ }
   }
-  return byHash
-}
-
-/** Reassemble the order named in the instruction from the two discovered delegations. */
-function assembleOrder(
-  byHash: Map<string, DelegationStruct>, swapHash: Hex, approveHash: Hex, chainId: number,
-): DiscoveredOrder | null {
-  const swap = byHash.get(swapHash.toLowerCase())
-  const approve = byHash.get(approveHash.toLowerCase())
-  if (!swap || !approve) return null
-  // The swap carries the strategy: it must have limitedCalls + both bounds.
-  if (!hasLimitedCalls(swap, chainId)) return null
-  const bounds = balanceChangeCaveats(swap, chainId).map((c) => decodeBalanceChangeTerms(c.terms))
-  const decrease = bounds.find((b) => b.enforceDecrease)
-  const increase = bounds.find((b) => !b.enforceDecrease)
-  if (!decrease || !increase) return null
-  return {
-    swap, approve,
-    fundingToken: decrease.token,
-    targetToken: increase.token,
-    maxSpend: decrease.amount,
-    minReceived: increase.amount,
-  }
+  return out
 }
 
 async function tokenDecimals(client: PublicClient, token: Address): Promise<number> {
@@ -295,26 +274,19 @@ function toSdkDelegation(d: DelegationStruct): Delegation {
 
 async function fillOrder(params: {
   walletClient: WalletClient; publicClient: PublicClient; apiKey: string
-  order: DiscoveredOrder; swapRouter: Address; quote: unknown
+  order: DiscoveredOrder; quote: unknown
 }): Promise<Hex> {
-  const { walletClient, publicClient, apiKey, order, swapRouter, quote } = params
-  // swapRouter is the Universal Router (the approve spender + the swap target).
-  const swapDelegation = toSdkDelegation(order.swap)
-  const approveDelegation = toSdkDelegation(order.approve)
+  const { walletClient, publicClient, apiKey, order, quote } = params
+  const delegation = toSdkDelegation(order.delegation)
 
-  // The approve is granted by its own delegation with pinned calldata:
-  // approve(router, maxSpend) on the funding token. Encode exactly that.
-  const approveCallData = encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [swapRouter, order.maxSpend] })
+  // The swap pulls the funding token through Permit2 (Universal Router 2.0), which
+  // requires a standing Permit2 allowance for the router on the Safe — a one-time
+  // setup, NOT part of this redeem. So the mandate authorises the swap alone: a
+  // single execution, a single redemption (compatible with limitedCalls(1)). The
+  // Increase bound wraps the swap that delivers the bought token, so it nets true.
   const swap = await buildSwapTx(apiKey, quote)
-
-  // Two SingleDefault entries, two DISTINCT delegations. Each runs its own caveat
-  // chain around its own execution: the approve delegation has no balance-change
-  // bound (so it doesn't revert on zero WETH gain), the swap delegation's Increase
-  // bound wraps the swap that delivers the WETH. limitedCalls(1) is per-hash, so
-  // each counter is independent. Both land in one transaction (all-or-nothing).
   const redemptions: Redemption[] = [
-    { permissionContext: [approveDelegation], executions: [createExecution({ target: order.fundingToken, value: 0n, callData: approveCallData })], mode: ExecutionMode.SingleDefault },
-    { permissionContext: [swapDelegation], executions: [createExecution({ target: swap.to, value: BigInt(swap.value), callData: swap.data })], mode: ExecutionMode.SingleDefault },
+    { permissionContext: [delegation], executions: [createExecution({ target: swap.to, value: BigInt(swap.value), callData: swap.data })], mode: ExecutionMode.SingleDefault },
   ]
 
   // The helper simulates before sending — a min-received / cap revert surfaces here.
@@ -341,8 +313,6 @@ async function main() {
   const chainId = instruction.chainId
   const chain = CHAINS[chainId]
   if (!chain) throw new Error(`Unsupported chain: ${chainId}`)
-  const router = UNIVERSAL_ROUTER[chainId]
-  if (!router) throw new Error(`No Universal Router configured for chain ${chainId}`)
 
   const privateKey = requireEnv('AGENT_PRIVATE_KEY') as Hex
   const apiKey = requireEnv('UNISWAP_API_KEY')
@@ -360,9 +330,9 @@ async function main() {
 
   console.log(`Limit-order agent ${account.address} on chain ${chainId} (${network})`)
 
-  const byHash = await discoverByHash(account.address, chainId, network)
-  const order = assembleOrder(byHash, instruction.swapDelegationHash, instruction.approveDelegationHash, chainId)
-  if (!order) { console.log('Order (swap + approve pair) from the instruction not found on Intuition yet — both delegations signed and published?'); return }
+  const orders = await discoverOrders(account.address, chainId, network)
+  const order = orders.find((o) => o.delegationHash.toLowerCase() === instruction.delegationHash.toLowerCase())
+  if (!order) { console.log('Order from the instruction not found on Intuition yet — is it signed and published?'); return }
 
   const inDecimals = await tokenDecimals(publicClient, order.fundingToken)
   const outDecimals = await tokenDecimals(publicClient, order.targetToken)
@@ -390,7 +360,7 @@ async function main() {
     } else if (quote.output >= order.minReceived) {
       console.log(`  dip hit: quote returns ${formatUnits(quote.output, outDecimals)} ≥ ${formatUnits(order.minReceived, outDecimals)} — filling`)
       try {
-        const hash = await fillOrder({ walletClient, publicClient, apiKey, order, swapRouter: router, quote: quote.quote })
+        const hash = await fillOrder({ walletClient, publicClient, apiKey, order, quote: quote.quote })
         console.log('  redeemed:', hash)
         const receipt = await publicClient.waitForTransactionReceipt({ hash })
         console.log('  status:', receipt.status, 'block', receipt.blockNumber)
