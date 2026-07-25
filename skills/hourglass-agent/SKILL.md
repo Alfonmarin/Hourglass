@@ -35,7 +35,10 @@ App — so the flow hands back and forth once. The whole loop, from the operator
    (steps 1–3 below). You fund that address with a little gas.
 2. **You open the Safe App**, paste the agent address, create the delegation (Strategy
    or Limit order tab), and sign it — a multisig Safe needs its threshold of signers.
-   The publisher backend then publishes the finalized mandate on Intuition.
+   The publisher backend then publishes the finalized mandate on Intuition. For a limit
+   order, the tab first asks you to **Enable trading** for the funding token — a one-time
+   Permit2 setup (one batched Safe tx) the router needs to pull the token; without it the
+   agent's swap reverts with `AllowanceExpired`. Signed once per token, reused forever.
 3. **You come back to this skill** with the recap JSON the tab emitted. The agent
    discovers the mandate on Intuition and executes it (steps 5–6).
 
