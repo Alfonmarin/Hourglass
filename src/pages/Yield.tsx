@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
-import { createPublicClient, http, parseUnits, formatUnits, erc20Abi, type Address, type Hex } from 'viem'
+import { createPublicClient, http, isAddress, parseUnits, formatUnits, erc20Abi, type Address, type Hex } from 'viem'
 import { useUniswapPools } from '../hooks/useUniswapPools'
 import { buildDepositPlan } from '../lib/uniswapPosition'
 import { buildYieldDelegations, buildStoredYieldPlan, type StoredYieldPlan } from '../lib/yieldDelegations'
@@ -38,9 +38,11 @@ export default function Yield() {
 
   const recommended = pools[0] ?? null
   const pool = selectedPool ?? recommended
-  // Vite env vars are untyped strings; this one is optional (panel stays
-  // disabled below when unset) and never validated as a real address beyond that.
-  const agentAddress = import.meta.env.VITE_YIELD_AGENT_ADDRESS as Address | undefined
+  // Pre-fill from the env var if the operator set one, but the user can always
+  // paste a different agent address — the input is the source of truth.
+  const [agent, setAgent] = useState(() => (import.meta.env.VITE_YIELD_AGENT_ADDRESS as string | undefined) ?? '')
+  const agentValid = isAddress(agent)
+  const agentAddress = agentValid ? (agent as Address) : undefined
 
   useEffect(() => {
     if (!pool) {
@@ -236,12 +238,22 @@ export default function Yield() {
             change the target, method, amount, or recipient.
           </p>
 
-          {!agentAddress && (
-            <div className="flex items-center gap-2 text-pending text-sm">
-              <IconAlert size={16} /> Set VITE_YIELD_AGENT_ADDRESS to enable delegating to the agent.
-            </div>
+          <Field label="Agent address" required missing={agent !== '' && !agentValid}>
+            <input
+              type="text" placeholder="0x…" value={agent}
+              onChange={(e) => setAgent(e.target.value)}
+              aria-label="Agent address"
+              className={`font-mono ${agent && !agentValid ? 'ring-1 ring-danger' : ''}`}
+            />
+          </Field>
+          {!agentValid && (
+            <p className="text-xs text-faint -mt-2">
+              Run the agent yourself (see scripts/yield-agent.ts) and paste its wallet address here — everything below
+              stays locked until you do.
+            </p>
           )}
 
+          <div className={agentValid ? 'space-y-4' : 'space-y-4 opacity-40 pointer-events-none select-none'} aria-disabled={!agentValid}>
           <div className="grid grid-cols-2 gap-4">
             <Field label={`${pool.token0.symbol} amount`} required missing={amount0Raw > 0n && !hasBalance0}>
               <input
@@ -299,6 +311,7 @@ export default function Yield() {
               {step === 'preparing' ? 'Preparing…' : step === 'signing' ? `Signing ${signingIndex + 1} of 3…` : 'Sign delegations'}
             </Btn>
           )}
+          </div>
         </Block>
       )}
     </div>
