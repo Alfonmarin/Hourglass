@@ -7,6 +7,31 @@
 > [`UNISWAP_STRATEGY_CATALOGUE.md`](UNISWAP_STRATEGY_CATALOGUE.md),
 > [`HOURGLASS_STRATEGIES.md`](HOURGLASS_STRATEGIES.md).
 
+## Product target — everything from a Safe
+
+Hourglass targets **Safes with large treasuries** (DAOs, companies) that cannot
+automate on-chain investing themselves. The offer: the multisig approves **one
+bounded mandate** (quorum signs once), and an agent trades inside that envelope
+**without ever re-quoruming the owners or holding any funds**.
+
+This is not marketing — it constrains the design (verified against the repo):
+
+- **Delegator is always the Safe** (its DeleGator module, `from: moduleAddress`).
+  No EOA, no intermediary account. Everything moves from the Safe and returns to it.
+- **Signature is multisig**: the mandate activates only when the Safe's threshold
+  of owners signs (`sdk.txs.signTypedMessage` → aggregated EIP-1271). One signature
+  event, not one per trade.
+- **The agent only triggers**: at redeem, `DelegationManager.redeemDelegations`
+  executes *as the Safe*; the agent (`account.address`) merely submits the tx and
+  pays gas — it never custodies funds (verified `scripts/yield-agent.ts:77-83`,
+  `yieldDelegations.ts:49`).
+- **Non-custodial is non-negotiable** for this target: a large treasury's owners
+  will not let funds transit an agent account. Hence `erc20BalanceChange` (funds
+  never leave the Safe), not a funding-transfer rail.
+
+Every decision below serves this: one quorum-signed, Safe-rooted, non-custodial
+mandate; the agent trades bounded, the treasury stays put.
+
 ## Scope
 
 - **In:** DCA mandate (one funding token → one target token, bounded per swap),
