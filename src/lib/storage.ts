@@ -56,7 +56,7 @@ export interface StoredDelegation {
     // functionCall + erc20BalanceChange: an agent swaps on the Safe's behalf,
     // bounded by a per-swap loss cap. `strategyKind` names the variant (dca,
     // range, …) so the catalogue can grow without new scopeTypes.
-    strategyKind?: 'dca' | 'range'
+    strategyKind?: 'dca' | 'range' | 'limitOrder'
     // The token the agent buys with the funding token (the swap output). The DCA
     // intent (amount/period) lives in `amount`/`period` above — an agent
     // instruction, NOT an on-chain guarantee. Only `capPerSwap` is enforced.

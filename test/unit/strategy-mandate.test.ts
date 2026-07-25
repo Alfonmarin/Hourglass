@@ -27,7 +27,7 @@ function dcaMandate() {
     agentAddress: AGENT,
     environment: getEnvironment(CHAIN),
     swapRouter: ROUTER,
-    caps: [{ tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n }],
+    bounds: [{ tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n, direction: 'decrease' as const }],
   })
 }
 
@@ -59,15 +59,15 @@ describe('buildStrategyMandate', () => {
     expect(t.amount).toBe(55_000_000n)
   })
 
-  test('range mandate stacks a second cap on a distinct token', () => {
+  test('stacks a max-spend (decrease) + a min-received (increase) on distinct tokens', () => {
     const m = buildStrategyMandate({
       moduleAddress: MODULE,
       agentAddress: AGENT,
       environment: getEnvironment(CHAIN),
       swapRouter: ROUTER,
-      caps: [
-        { tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n },
-        { tokenAddress: WETH, recipient: MODULE, amount: 20_000_000_000_000_000n },
+      bounds: [
+        { tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n, direction: 'decrease' as const },
+        { tokenAddress: WETH, recipient: MODULE, amount: 20_000_000_000_000_000n, direction: 'increase' as const },
       ],
     })
     const balanceChanges = m.caveats.filter(
@@ -76,15 +76,35 @@ describe('buildStrategyMandate', () => {
     expect(balanceChanges).toHaveLength(2)
   })
 
-  test('throws when given no caps', () => {
+  test('discovery finds the Decrease (funding) bound even when the Increase is first', () => {
+    // The order here puts the Increase (target) bound first — findBalanceChangeCaveat
+    // must still return the Decrease (funding) one, not the first match.
+    const m = buildStrategyMandate({
+      moduleAddress: MODULE,
+      agentAddress: AGENT,
+      environment: getEnvironment(CHAIN),
+      swapRouter: ROUTER,
+      bounds: [
+        { tokenAddress: WETH, recipient: MODULE, amount: 20_000_000_000_000_000n, direction: 'increase' as const },
+        { tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n, direction: 'decrease' as const },
+      ],
+    })
+    const found = findBalanceChangeCaveat(m, CHAIN)!
+    const t = decodeBalanceChangeTerms(found.terms)
+    expect(t.enforceDecrease).toBe(true)
+    expect(getAddress(t.token)).toBe(USDC) // funding, not the WETH target
+    expect(t.amount).toBe(55_000_000n)
+  })
+
+  test('throws when given no bounds', () => {
     expect(() =>
       buildStrategyMandate({
         moduleAddress: MODULE,
         agentAddress: AGENT,
         environment: getEnvironment(CHAIN),
         swapRouter: ROUTER,
-        caps: [],
+        bounds: [],
       }),
-    ).toThrow(/at least one spend cap/)
+    ).toThrow(/at least one balance bound/)
   })
 })

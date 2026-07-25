@@ -35,10 +35,21 @@ delegator, authority, caveats, salt, signature) plus a `meta` describing it:
 | `targetToken` | the token to **buy** (the swap output) |
 | `amount` | the buy amount per tick — the DCA intent (agent instruction) |
 | `period` | the cadence: `daily` / `weekly` / `monthly` (agent instruction) |
-| `capPerSwap` | the on-chain per-swap cap (human units) — the guardrail |
+| `capPerSwap` | the on-chain max-spend per swap (from the Decrease bound) — a guardrail |
+| `maxPrice` | the operator's max price (funding per target), or null — enforced on-chain via the min-received Increase bound |
 
-`amount`, `period`, and `targetToken` are the **intent** the agent carries out —
-not enforced on-chain. `capPerSwap` is the only spend limit the caveat enforces.
+Two kinds of field:
+
+- **Intent** (`amount`, `period`, `targetToken`) — what the agent carries out, from
+  the operator's instruction (the recap). **Not** enforced on-chain.
+- **Guardrails** (`capPerSwap`, `maxPrice`) — enforced on-chain by the mandate's
+  `erc20BalanceChange` caveats: a Decrease on the funding token (max spend) and,
+  when a max price was set, an Increase on the bought token (min received). The
+  agent cannot overspend or overpay, whatever it does.
+
+Note: the discovery reads `tokenAddress` and `capPerSwap` from the **Decrease**
+caveat (the funding token). `targetToken`, `amount`, `period`, and `maxPrice` come
+from the operator's instruction, matched to the mandate by `delegationHash`.
 
 ## Filtering
 
