@@ -2,14 +2,14 @@ import type { Address, Chain } from 'viem';
 import { mainnet, base } from 'viem/chains';
 
 /**
- * Analytics reads on-chain events directly from Hourglass's own (self-deployed,
+ * Analytics reads on-chain events directly from HourGlass's own (self-deployed,
  * audited-bytecode) caveat enforcer instances — attribution by emitter address,
  * no backend, no central registry. See /docs/analytics and ADR 0002.
  *
  * The instances live on Ethereum mainnet and Base at identical addresses (CREATE2
  * under the same salt — see the Vite app's `src/config/addresses.ts` → `hourglass`,
  * and /docs/deployments for the full per-chain list). Only charges routed to these
- * instances are attributable to Hourglass.
+ * instances are attributable to HourGlass.
  */
 
 // Addresses are checksummed literals copied from the Vite app's addresses.ts; the

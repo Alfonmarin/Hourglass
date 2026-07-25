@@ -18,20 +18,20 @@ export interface ChainAddresses {
   allowedCalldataEnforcer: Address
   redeemerEnforcer: Address
   delegationMetaSwapAdapter: Address
-  // Hourglass-owned instances of the audited enforcers (unmodified bytecode, deployed
-  // under the Hourglass CREATE2 salt). Present only on chains where they are deployed.
+  // HourGlass-owned instances of the audited enforcers (unmodified bytecode, deployed
+  // under the HourGlass CREATE2 salt). Present only on chains where they are deployed.
   // The period enforcer doubles as the on-chain analytics marker — its
-  // TransferredInPeriod events are attributable to Hourglass by emitter address
+  // TransferredInPeriod events are attributable to HourGlass by emitter address
   // (see spec/plan-analytics.md and spec/hourglass-enforcer-suite.md).
-  hourglass?: HourglassEnforcers
+  hourglass?: HourGlassEnforcers
 }
 
 /**
- * The complete Delegation Framework caveat enforcer set, deployed under the Hourglass
+ * The complete Delegation Framework caveat enforcer set, deployed under the HourGlass
  * CREATE2 salt. Registry only: `getEnvironment()` decides which of these actually
  * override the SDK defaults, so adding an entry here does not change signing behaviour.
  */
-export interface HourglassEnforcers {
+export interface HourGlassEnforcers {
   allowedCalldataEnforcer: Address
   allowedMethodsEnforcer: Address
   allowedTargetsEnforcer: Address
@@ -94,13 +94,13 @@ const SHARED_ENFORCERS = {
   delegationMetaSwapAdapter: '0x5e4b49156D23D890e7DC264c378a443C2d22A80E' as Address,
 }
 
-// Hourglass-owned instances of the audited enforcers. Deployed from the OWS
+// HourGlass-owned instances of the audited enforcers. Deployed from the OWS
 // `ourglass-deployer` wallet (0x2FF0363132d0dc5feb090790C46B77EF1ce96aa2) via CREATE2
 // under the salt bytes32("OURGLASS"). Salt + creation bytecode fully determine the
 // address, so these are byte-for-byte the same on every chain we deploy to — hence one
 // shared constant rather than a per-chain copy. Attach it only to chains where the
 // deployment actually happened. See spec/hourglass-enforcer-suite.md.
-const HOURGLASS_ENFORCERS: HourglassEnforcers = {
+const HOURGLASS_ENFORCERS: HourGlassEnforcers = {
   allowedCalldataEnforcer: '0xb418A0C7003F15EEC765D1e1c0E198cA8531fABe' as Address,
   allowedMethodsEnforcer: '0x5FFb84883543A9ED068b1D3DB428037e95C1f26A' as Address,
   allowedTargetsEnforcer: '0x71832d69693A818C7e6163e632c5e3fBedf65362' as Address,
@@ -155,7 +155,7 @@ export const addresses: Record<number, ChainAddresses> = {
     delegatorModuleFactory: '0x250435c7D339F03050c847c85f0108f44e876058' as Address,
     ...SHARED_ENFORCERS,
   },
-  // Base Mainnet (8453) — the full Hourglass enforcer suite was deployed here on
+  // Base Mainnet (8453) — the full HourGlass enforcer suite was deployed here on
   // 2026-07-25, same wallet and salt as chain 1, so the addresses are identical.
   // All 37 verified on Basescan. See spec/hourglass-enforcer-suite.md.
   8453: {
@@ -165,7 +165,7 @@ export const addresses: Record<number, ChainAddresses> = {
     hourglass: HOURGLASS_ENFORCERS,
   },
   // Ethereum Mainnet (1) — DelegationManager + shared enforcers are the deterministic
-  // MetaMask deployments. The DeleGatorModuleFactory and the first three Hourglass
+  // MetaMask deployments. The DeleGatorModuleFactory and the first three HourGlass
   // enforcer instances were deployed on 2026-06-25 from the OWS `ourglass-deployer`
   // wallet (0x2FF0363132d0dc5feb090790C46B77EF1ce96aa2); the remaining 34 enforcers
   // followed on 2026-07-25 from the same wallet and salt, all verified on Etherscan.

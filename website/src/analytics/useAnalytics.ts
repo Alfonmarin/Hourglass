@@ -13,7 +13,7 @@ export interface AnalyticsState {
 }
 
 /**
- * Load Hourglass on-chain charges and the metadata for the tokens they touch.
+ * Load HourGlass on-chain charges and the metadata for the tokens they touch.
  * Owns the lifecycle; the dashboard component renders the result.
  */
 export function useAnalytics(): AnalyticsState {

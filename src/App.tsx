@@ -3,16 +3,18 @@ import Home from './pages/Home'
 import CreateDelegation from './pages/CreateDelegation'
 import CreateStream from './pages/CreateStream'
 import Charge from './pages/Charge'
+import Yield from './pages/Yield'
 import { Logo, Card } from './ui/components'
-import { IconGrid, IconPlus, IconBolt, IconRepeat, IconLock, IconArrowR } from './ui/icons'
+import { IconGrid, IconPlus, IconBolt, IconRepeat, IconLock, IconArrowR, IconTrend } from './ui/icons'
 
-type Page = 'home' | 'create' | 'redeem'
+type Page = 'home' | 'create' | 'redeem' | 'yield'
 type CreateMode = 'choose' | 'subscription' | 'stream'
 
 const NAV: { key: Page; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { key: 'home', label: 'Overview', icon: IconGrid },
   { key: 'create', label: 'Create', icon: IconPlus },
   { key: 'redeem', label: 'Charge', icon: IconBolt },
+  { key: 'yield', label: 'Yield', icon: IconTrend },
 ]
 
 function ChoiceCard({
@@ -133,6 +135,7 @@ function AppInner() {
           {page === 'create' && createMode === 'subscription' && <CreateDelegation />}
           {page === 'create' && createMode === 'stream' && <CreateStream />}
           {page === 'redeem' && <Charge />}
+          {page === 'yield' && <Yield />}
         </main>
       </div>
     </div>

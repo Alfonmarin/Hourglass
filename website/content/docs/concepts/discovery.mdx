@@ -1,18 +1,18 @@
 ---
 title: Discovery
-description: How OurGlass finds delegations on Intuition — and why that service is a convenience, never a dependency.
+description: How HourGlass finds delegations on Intuition — and why that service is a convenience, never a dependency.
 ---
 
-OurGlass records each signed delegation on the **Intuition** knowledge graph so
+HourGlass records each signed delegation on the **Intuition** knowledge graph so
 the people in an agreement can *find* it: a receiver sees what's been delegated to
 them, a payer sees what they granted — without anyone manually sharing a JSON
 file. This page explains how that works and, just as importantly, why it adds **no
-new dependency**. If the discovery layer disappears, both sides keep using OurGlass
+new dependency**. If the discovery layer disappears, both sides keep using HourGlass
 exactly as before.
 
 ## What gets recorded
 
-After a delegation is signed, OurGlass publishes it to Intuition as a small set of
+After a delegation is signed, HourGlass publishes it to Intuition as a small set of
 public **atoms** and **triples**: the payer's and receiver's accounts, the signed
 delegation document (pinned to IPFS), and the relationships between them (`owns`,
 `delegate to`, `in context of`).
@@ -40,7 +40,7 @@ It is an **indexer**, not a gatekeeper.
 The source of truth is, and remains, **on-chain**: the payer's signature and the
 `DelegationManager`. Intuition is an **index** on top of that — it makes
 delegations *discoverable*, nothing more. If the publisher or Intuition is
-unavailable, OurGlass keeps working:
+unavailable, HourGlass keeps working:
 
 | | If discovery is down |
 |---|---|
@@ -50,7 +50,7 @@ unavailable, OurGlass keeps working:
 | **The agreement itself** | Unaffected. It lives in the signature + the on-chain framework, not in Intuition. |
 
 What you lose without the index is only the **convenience** of auto-listing — you
-fall back to sharing and importing the delegation JSON, exactly how OurGlass worked
+fall back to sharing and importing the delegation JSON, exactly how HourGlass worked
 before discovery existed.
 
 ## How the apps use it
@@ -65,7 +65,7 @@ before discovery existed.
 ## Active vs revoked
 
 Intuition records that a delegation *exists*; it does not own its *status*. So
-OurGlass treats the two separately:
+HourGlass treats the two separately:
 
 - **Intuition is the index** — which delegations exist and what they mean.
 - **The origin-chain `DelegationManager` is the source of truth** — whether a

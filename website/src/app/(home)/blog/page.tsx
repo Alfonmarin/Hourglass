@@ -5,7 +5,7 @@ import { formatAuthors, formatDate } from '@/lib/format';
 
 export const metadata: Metadata = {
   title: 'Blog',
-  description: 'Updates and announcements from the OurGlass team.',
+  description: 'Updates and announcements from the HourGlass team.',
 };
 
 export default function BlogIndexPage() {
@@ -18,7 +18,7 @@ export default function BlogIndexPage() {
       <header className="mb-12">
         <h1 className="text-4xl font-semibold tracking-tight m-0">Blog</h1>
         <p className="text-fd-muted-foreground mt-3 m-0">
-          Updates and announcements from the OurGlass team.
+          Updates and announcements from the HourGlass team.
         </p>
       </header>
 

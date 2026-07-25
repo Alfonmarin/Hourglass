@@ -46,7 +46,7 @@ export function AnalyticsDashboard() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Analytics</h1>
         <p className="mt-1 max-w-2xl text-sm text-fd-muted-foreground">
-          Live, read straight from the Hourglass enforcer instances on {scanned} — no backend.{' '}
+          Live, read straight from the HourGlass enforcer instances on {scanned} — no backend.{' '}
           <Link
             href="/docs/analytics"
             className="rounded underline underline-offset-4 hover:text-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-line)]"
@@ -96,8 +96,8 @@ export function AnalyticsDashboard() {
       <div className="mt-10 rounded-xl border border-fd-border p-6">
         <h2 className="text-base font-semibold">No attributable charges yet</h2>
         <p className="mt-2 max-w-xl text-sm text-fd-muted-foreground">
-          This view counts charges and claims routed to the Hourglass-deployed enforcer instances on {scanned}.
-          Once subscriptions and streams created through Hourglass are charged on-chain, their volume and counts —
+          This view counts charges and claims routed to the HourGlass-deployed enforcer instances on {scanned}.
+          Once subscriptions and streams created through HourGlass are charged on-chain, their volume and counts —
           broken down by chain, agreement, receiver, and token — appear here automatically. The instances are
           listed in{' '}
           <Link

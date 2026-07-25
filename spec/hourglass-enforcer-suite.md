@@ -1,4 +1,4 @@
-# Full Hourglass enforcer suite on Ethereum mainnet and Base
+# Full HourGlass enforcer suite on Ethereum mainnet and Base
 
 **Status:** Accepted
 **Date:** 2026-07-25
@@ -7,12 +7,12 @@
 
 ## Context
 
-`spec/ourglass-enforcer-instances.md` deployed three Hourglass-salted enforcers on
-2026-06-25 — the exact set Hourglass delegations referenced at the time — and explicitly
-rejected the full suite as "~28.3M gas for ~34 enforcers Hourglass never references".
+`spec/ourglass-enforcer-instances.md` deployed three HourGlass-salted enforcers on
+2026-06-25 — the exact set HourGlass delegations referenced at the time — and explicitly
+rejected the full suite as "~28.3M gas for ~34 enforcers HourGlass never references".
 
 That tradeoff was reversed on user request: the remaining enforcers should exist under
-the Hourglass salt so any future delegation shape (batch executions, NFT scopes, logical-OR
+the HourGlass salt so any future delegation shape (batch executions, NFT scopes, logical-OR
 caveat trees, multi-token periods) can be built without a new deployment round, and so the
 whole set is auditable from one place.
 
@@ -23,7 +23,7 @@ mainnet under the same salt `bytes32("OURGLASS")`, and publish verified source f
 
 The 3 instances from June (`ERC20PeriodTransferEnforcer`, `TimestampEnforcer`,
 `ERC20StreamingEnforcer`) were skipped — their CREATE2 addresses are already occupied.
-Total: 37 Hourglass-owned enforcers on chain 1.
+Total: 37 HourGlass-owned enforcers on chain 1.
 
 As in June, this is **not** custom code: every deployment is unmodified
 `@metamask/delegation-framework` bytecode. The recorded deviation remains the
@@ -34,7 +34,7 @@ deployment address, not any logic change.
 The CREATE2 salt is the literal ASCII `OURGLASS`
 (`0x4f5552474c415353…00`). It is an input to every deployed address, so it cannot be
 renamed to `HOURGLASS` without producing a completely different address set and
-orphaning all 74 deployments. Code and prose say Hourglass; the salt constant, the
+orphaning all 74 deployments. Code and prose say HourGlass; the salt constant, the
 deployer wallet name (`ourglass-deployer` in OWS) and the prior ADR's filename are
 historical facts and stay as they are. Anyone recomputing an address must use
 `OURGLASS`.
@@ -81,7 +81,7 @@ historical facts and stay as they are. Anyone recomputing an address must use
 Constructor arguments (the only two enforcers that take any):
 `LogicalOrWrapperEnforcer(DelegationManager)` and
 `NativeTokenPaymentEnforcer(DelegationManager, ArgsEqualityCheckEnforcer)`, the latter
-pointing at the Hourglass-salted `0xAF081f82…`, not the canonical instance.
+pointing at the HourGlass-salted `0xAF081f82…`, not the canonical instance.
 
 - Deployer: OWS `ourglass-deployer` `0x2FF0363132d0dc5feb090790C46B77EF1ce96aa2`, nonces 5–38.
 - Gas: 18 518 437 total, ~0.00206 ETH at ~0.09 gwei. Balance after: 0.008430907 ETH.
@@ -128,17 +128,17 @@ concluding.
 ## Consequences
 
 **Positive:**
-- Any future Hourglass delegation shape can reference an Hourglass-owned, source-verified
+- Any future HourGlass delegation shape can reference an HourGlass-owned, source-verified
   enforcer without a deployment round.
 - The suite is auditable on Etherscan: identical source to the audited MetaMask artifacts,
-  at addresses attributable to Hourglass.
+  at addresses attributable to HourGlass.
 
 **Negative:**
 - 37 addresses to track instead of 3 — though one set covers both chains, since
   CREATE2 makes the addresses identical. Deployed on chain 1 and 8453 only.
 
 **Neutral (worth knowing):**
-- `src/config/addresses.ts` carries all 37 as a **registry** (`HourglassEnforcers`, one
+- `src/config/addresses.ts` carries all 37 as a **registry** (`HourGlassEnforcers`, one
   shared `HOURGLASS_ENFORCERS` constant attached to chains 1 and 8453), but
   `getEnvironment()` still overrides only the three enforcers from June. App behaviour is
   therefore unchanged and no in-flight delegation is affected: adding a key to the registry

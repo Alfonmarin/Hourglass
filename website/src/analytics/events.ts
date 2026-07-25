@@ -206,7 +206,7 @@ export interface ChargesResult {
 }
 
 /**
- * Load all attributable charges + claims from the Hourglass enforcer instances,
+ * Load all attributable charges + claims from the HourGlass enforcer instances,
  * across every configured chain.
  *
  * A chain that fails to respond is surfaced rather than silently dropped: a partial

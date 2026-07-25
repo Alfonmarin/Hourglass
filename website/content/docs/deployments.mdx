@@ -1,16 +1,16 @@
 ---
 title: Deployments
-description: Every contract Hourglass has deployed on-chain, with verified source.
+description: Every contract HourGlass has deployed on-chain, with verified source.
 icon: FileCode
 ---
 
-Hourglass has no contract logic of its own. What it deploys are **its own instances
+HourGlass has no contract logic of its own. What it deploys are **its own instances
 of MetaMask's audited caveat enforcers** — unmodified bytecode at a different
 address — plus the `DeleGatorModuleFactory` that was missing on Ethereum mainnet.
 
 Why redeploy something that already exists: the enforcer address is the emitter of
-the caveat events, so an Hourglass-owned instance makes a charge attributable to
-Hourglass by a single filter, with no central registry. The reasoning is in
+the caveat events, so an HourGlass-owned instance makes a charge attributable to
+HourGlass by a single filter, with no central registry. The reasoning is in
 [Analytics](/docs/analytics) and the trust implications in
 [Security](/docs/security#self-deployed-enforcer-instances).
 
@@ -37,7 +37,7 @@ Ethereum mainnet and Base — a given enforcer is at one address, everywhere.
 ## Ethereum mainnet (chain 1) and Base (chain 8453)
 
 Deployer: `0x2FF0363132d0dc5feb090790C46B77EF1ce96aa2`. On Ethereum mainnet, the
-three enforcers Hourglass delegations reference were deployed 2026-06-25 and the rest
+three enforcers HourGlass delegations reference were deployed 2026-06-25 and the rest
 of the suite on 2026-07-25. On Base, all 37 were deployed 2026-07-25.
 
 Source is verified on Etherscan for mainnet and on Basescan for Base.
@@ -55,7 +55,7 @@ project, not in the Delegation Framework.
 | `DeleGatorModuleFactory` | Ethereum mainnet | `0xbDDE43bCf6Db9DBeB1127E6574CCF70BFb1c2DC3` |
 | `DeleGatorModuleFactory` | Base | `0x0D0421e43057bf850e243EcDA2AD8966C8D5877B` |
 
-### Enforcers referenced by Hourglass delegations
+### Enforcers referenced by HourGlass delegations
 
 These three are the ones the app actually routes through — a subscription cap, its
 optional end date, and the payroll stream.
@@ -68,7 +68,7 @@ optional end date, and the payroll stream.
 
 ### Rest of the suite
 
-Deployed so that any future delegation shape can reference an Hourglass-owned
+Deployed so that any future delegation shape can reference an HourGlass-owned
 enforcer without a new deployment round. They are **not** wired into the app today.
 
 | Contract | Address |
@@ -110,13 +110,13 @@ enforcer without a new deployment round. They are **not** wired into the app tod
 
 Two of them take constructor arguments: `LogicalOrWrapperEnforcer` receives the
 `DelegationManager`, and `NativeTokenPaymentEnforcer` receives the
-`DelegationManager` plus the Hourglass `ArgsEqualityCheckEnforcer` above — not the
+`DelegationManager` plus the HourGlass `ArgsEqualityCheckEnforcer` above — not the
 canonical one. Both are part of the verified source on Etherscan.
 
 ## Other chains
 
 Base Sepolia and Ethereum Sepolia use MetaMask's canonical enforcer deployments. No
-Hourglass-owned instance exists there, so charges on those chains are not
+HourGlass-owned instance exists there, so charges on those chains are not
 attributable by emitter address.
 
 ## Verifying this yourself

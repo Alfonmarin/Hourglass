@@ -1,5 +1,5 @@
-export const appName = 'OurGlass';
-export const siteUrl = 'https://ourglass.intuition.box';
+export const appName = 'HourGlass';
+export const siteUrl = 'https://hourglass.box';
 export const docsRoute = '/docs';
 export const blogRoute = '/blog';
 export const analyticsRoute = '/analytics';

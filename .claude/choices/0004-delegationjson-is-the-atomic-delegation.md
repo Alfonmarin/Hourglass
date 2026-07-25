@@ -32,7 +32,7 @@ field**:
   "name": "OurGlass delegation — 300 USDC/month",
   "description": "Recurring ERC20 subscription: 300 USDC/month …",
   "image": "",
-  "url": "https://ourglass.intuition.box/",
+  "url": "https://hourglass.box/",
   "delegation": { "delegate", "delegator", "authority", "caveats": [{ "enforcer", "terms" }], "salt", "signature" }
 }
 ```
