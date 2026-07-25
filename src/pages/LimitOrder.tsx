@@ -110,7 +110,12 @@ export default function LimitOrder() {
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
         swapRouter: router,
-        recipient: moduleAddress,
+        // The balance-change bounds must watch the account whose balance actually
+        // moves. The module executes via safe.execTransactionFromModule, so the swap
+        // runs with msg.sender == the Safe: the Safe spends the funding token and
+        // receives the bought token. Watching the module (which holds nothing) makes
+        // the Increase bound see no gain → ERC20BalanceChangeEnforcer reverts.
+        recipient: safe.safeAddress as Address,
         fundingToken: fundingAddress as Address,
         targetToken: targetToken as Address,
         maxSpend: spendRaw,

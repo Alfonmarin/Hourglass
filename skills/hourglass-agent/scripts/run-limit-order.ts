@@ -251,10 +251,12 @@ async function quoteSwap(apiKey: string, req: { swapper: Address; tokenIn: Addre
   const q = await apiPost<{ routing: string; quote: { output?: { amount?: string } } }>('/quote', apiKey, {
     swapper: req.swapper, tokenIn: req.tokenIn, tokenOut: req.tokenOut,
     tokenInChainId: String(req.chainId), tokenOutChainId: String(req.chainId),
-    amount: req.amount, type: 'EXACT_INPUT', slippageTolerance: 0.5, routingPreference: 'CLASSIC',
+    amount: req.amount, type: 'EXACT_INPUT', slippageTolerance: 0.5, routingPreference: 'BEST_PRICE',
   })
-  // A CLASSIC EXACT_INPUT quote reports the expected out under quote.output.amount
-  // (verified against the Uniswap Trading API /quote reference).
+  // routingPreference only accepts BEST_PRICE | FASTEST now (CLASSIC was deprecated as
+  // an INPUT); "CLASSIC" survives only as the response `routing` value, which the caller
+  // still checks to reject a non-redeemable UniswapX order. A CLASSIC EXACT_INPUT quote
+  // reports the expected out under quote.output.amount.
   const raw = q.quote?.output?.amount
   if (raw === undefined) throw new Error('Trading API quote: no output amount in response')
   return { routing: q.routing, quote: q.quote, output: BigInt(raw) }
