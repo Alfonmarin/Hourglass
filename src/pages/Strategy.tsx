@@ -45,8 +45,11 @@ export default function Strategy() {
   const [customBuy, setCustomBuy] = useState('')
   const [buyAmount, setBuyAmount] = useState('')
   const [frequency, setFrequency] = useState<Frequency>('weekly')
-  // Guardrail (the on-chain guarantee — the cap the caveat enforces).
+  // Guardrail (the on-chain guarantees — the caveats enforce these).
   const [cap, setCap] = useState('')
+  // Max price to pay (funding per target, e.g. USDC per WETH). Derives the
+  // min-received bound: a swap only clears if the price is at or below this.
+  const [maxPrice, setMaxPrice] = useState('')
   const [agent, setAgent] = useState('')
   const [step, setStep] = useState<SignStep>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +66,18 @@ export default function Strategy() {
   const targetToken = useCustomBuy ? customBuy : (selectedBuy?.address ?? '')
 
   const capRaw = (() => { try { return cap ? parseUnits(cap, decimals) : 0n } catch { return 0n } })()
+  const targetDecimals = selectedBuy?.decimals ?? 18
+
+  // Min received (raw, target units) = capSpend / maxPrice. The swap must return
+  // at least this much of the bought token, so it only clears when the effective
+  // price is ≤ maxPrice. Zero when either input is missing (bound then omitted).
+  const minReceivedRaw = (() => {
+    const spend = parseFloat(cap)
+    const price = parseFloat(maxPrice)
+    if (!(spend > 0) || !(price > 0)) return 0n
+    try { return parseUnits((spend / price).toFixed(targetDecimals), targetDecimals) } catch { return 0n }
+  })()
+
   const fundingValid = isAddress(fundingAddress)
   const targetValid = isAddress(targetToken)
   const agentValid = isAddress(agent)
@@ -90,7 +105,14 @@ export default function Strategy() {
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
         swapRouter: router,
-        bounds: [{ tokenAddress: fundingAddress as Address, recipient: moduleAddress, amount: capRaw, direction: 'decrease' }],
+        bounds: [
+          // Max spend on the funding token — the anti-drain cap.
+          { tokenAddress: fundingAddress as Address, recipient: moduleAddress, amount: capRaw, direction: 'decrease' as const },
+          // Min received on the bought token — the price floor (only if a max price is set).
+          ...(minReceivedRaw > 0n
+            ? [{ tokenAddress: targetToken as Address, recipient: moduleAddress, amount: minReceivedRaw, direction: 'increase' as const }]
+            : []),
+        ],
       })
 
       setStep('signing')
@@ -137,6 +159,7 @@ export default function Strategy() {
         amountPerBuy: buyAmount,
         frequency,
         capPerSwap: cap,
+        maxPrice: maxPrice || null,
       }, null, 2))
       setStep('done')
     } catch (err) {
@@ -264,7 +287,7 @@ export default function Strategy() {
           </Block>
 
           <Block title="Guardrail">
-            <p className="text-xs text-dim -mt-1 leading-relaxed">Enforced on-chain — the agent can never exceed this per swap, whatever it does.</p>
+            <p className="text-xs text-dim -mt-1 leading-relaxed">Enforced on-chain — the agent can never exceed the spend or pay above the price, whatever it does.</p>
             <Field label="Max per swap" required missing={cap !== '' && capRaw === 0n}>
               <div className="relative">
                 <input
@@ -274,6 +297,17 @@ export default function Strategy() {
                   className="pr-12"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">{fundingSymbol}</span>
+              </div>
+            </Field>
+            <Field label="Max price" hint="The swap only clears at or below this price. Leave empty to skip the price floor.">
+              <div className="relative">
+                <input
+                  type="text" inputMode="decimal" placeholder="3000"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(dec(e.target.value))}
+                  className="pr-24"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">{fundingSymbol} / {selectedBuy?.symbol ?? 'token'}</span>
               </div>
             </Field>
           </Block>
