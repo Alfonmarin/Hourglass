@@ -226,7 +226,7 @@ export default function Yield() {
                 onClick={() => setSelectedPool(p)}
                 className={`p-4 cursor-pointer flex items-center justify-between gap-4 ${active ? 'ring-line2' : ''}`}
               >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-3 min-w-0">
                   <div className="grid place-items-center w-9 h-9 rounded-xl shrink-0" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                     <IconTrend size={16} />
                   </div>
