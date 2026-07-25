@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
 import { createPublicClient, http, isAddress, parseUnits, type Address, type Hex } from 'viem'
 import { useSafeTokens } from '../hooks/useSafeTokens'
+import { useWhitelistedTokens } from '../hooks/useWhitelistedTokens'
 import type { HeldToken } from '../lib/safe-balances'
+import type { WhitelistedToken } from '../lib/token-list'
 import { buildStrategyMandate } from '../lib/strategyMandate'
 import { buildDelegationTypedData, computeDelegationHash } from '../lib/delegations'
 import { getEnvironment } from '../lib/environment'
@@ -31,13 +33,16 @@ const FREQUENCIES: { key: Frequency; label: string }[] = [
 export default function Strategy() {
   const { sdk, safe } = useSafeAppsSDK()
   const safeTokens = useSafeTokens(safe.safeAddress as Address, safe.chainId)
+  const buyTokens = useWhitelistedTokens(safe.chainId)
 
-  // Funding token (what the Safe spends).
+  // Funding token (what the Safe spends — must be held, so filtered by balance).
   const [tokenMode, setTokenMode] = useState<'whitelist' | 'custom'>('whitelist')
   const [selectedToken, setSelectedToken] = useState<HeldToken | null>(null)
   const [customToken, setCustomToken] = useState('')
-  // Strategy (the intent — carried out by the agent, not enforced on-chain).
-  const [targetToken, setTargetToken] = useState('')
+  // Buy token (the swap output — from the full whitelist, not held yet).
+  const [buyMode, setBuyMode] = useState<'whitelist' | 'custom'>('whitelist')
+  const [selectedBuy, setSelectedBuy] = useState<WhitelistedToken | null>(null)
+  const [customBuy, setCustomBuy] = useState('')
   const [buyAmount, setBuyAmount] = useState('')
   const [frequency, setFrequency] = useState<Frequency>('weekly')
   // Guardrail (the on-chain guarantee — the cap the caveat enforces).
@@ -50,6 +55,9 @@ export default function Strategy() {
   const fundingAddress = useCustom ? customToken : (selectedToken?.address ?? '')
   const fundingSymbol = useCustom ? 'tokens' : (selectedToken?.symbol ?? 'token')
   const decimals = useCustom ? 18 : (selectedToken?.decimals ?? 6)
+
+  const useCustomBuy = buyMode === 'custom'
+  const targetToken = useCustomBuy ? customBuy : (selectedBuy?.address ?? '')
 
   const capRaw = (() => { try { return cap ? parseUnits(cap, decimals) : 0n } catch { return 0n } })()
   const fundingValid = isAddress(fundingAddress)
@@ -188,11 +196,36 @@ export default function Strategy() {
               </Field>
             </div>
             <Field label="Buy this token" required missing={targetToken !== '' && !targetValid}>
-              <input
-                type="text" placeholder="Target token 0x…" value={targetToken}
-                onChange={(e) => setTargetToken(e.target.value)}
-                className={`font-mono ${targetToken && !targetValid ? 'ring-1 ring-danger' : ''}`}
-              />
+              <div className="flex items-center justify-end mb-1.5">
+                <Segmented
+                  value={buyMode}
+                  onChange={setBuyMode}
+                  options={[{ key: 'whitelist', label: 'Available tokens' }, { key: 'custom', label: 'Custom ERC-20' }]}
+                />
+              </div>
+              {useCustomBuy ? (
+                <input
+                  type="text" placeholder="Token 0x…" value={customBuy}
+                  onChange={(e) => setCustomBuy(e.target.value)}
+                  className={`font-mono ${customBuy && !targetValid ? 'ring-1 ring-danger' : ''}`}
+                />
+              ) : buyTokens.loading ? (
+                <p className="text-xs text-faint mt-1">Loading vetted tokens…</p>
+              ) : buyTokens.tokens.length > 0 ? (
+                <select
+                  aria-label="Buy token"
+                  value={selectedBuy?.address ?? ''}
+                  onChange={(e) => setSelectedBuy(buyTokens.tokens.find((t) => t.address === e.target.value) ?? null)}
+                  className="px-2"
+                >
+                  <option value="" disabled>Select a token…</option>
+                  {buyTokens.tokens.map((t) => (
+                    <option key={t.address} value={t.address}>{t.symbol}</option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-faint mt-1">No vetted tokens on this chain. Use a custom ERC-20 address.</p>
+              )}
             </Field>
           </Block>
 
@@ -242,7 +275,7 @@ export default function Strategy() {
             </div>
 
             <PreviewRow label="Buy">
-              <span className="text-ink text-xs">{targetValid ? short(targetToken) : '—'}</span>
+              <span className="text-ink text-xs">{selectedBuy ? selectedBuy.symbol : targetValid ? short(targetToken) : '—'}</span>
             </PreviewRow>
             <PreviewRow label="Agent">
               {agentValid ? <Mono className="text-xs text-dim">{short(agent)}</Mono> : <span className="text-[11px] text-faint">not set</span>}
