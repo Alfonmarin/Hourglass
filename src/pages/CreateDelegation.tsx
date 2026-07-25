@@ -21,11 +21,13 @@ import { saveDelegation, type StoredDelegation } from '../lib/storage'
 import { intuitionPublisherUrl } from '../lib/intuitionPublisher'
 import { OrgPicker } from '../ui/OrgPicker'
 import { type OrgSelection } from '../lib/orgSelection'
-import { Card, Btn, GaslessButton, USDC, Mono, CopyChip, Payee } from '../ui/components'
+import { Card, Btn, GaslessButton, Mono, CopyChip, Payee } from '../ui/components'
 import { Block, Field, Segmented, Row, PreviewRow } from '../ui/form'
 import { IconCube, IconLock, IconCheck, IconExt, IconHash } from '../ui/icons'
-import { findChain, USDC_ADDRESS, rpcUrl, chainName } from '../config/supported-chains'
+import { findChain, rpcUrl, chainName } from '../config/supported-chains'
 import { readErc20Meta } from '../lib/erc20'
+import { useSafeTokens } from '../hooks/useSafeTokens'
+import type { HeldToken } from '../lib/safe-balances'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 const trimAmount = (s: string) => (s.includes('.') ? s.replace(/\.?0+$/, '') : s)
@@ -89,11 +91,16 @@ export default function CreateDelegation() {
   const [org, setOrg] = useState<OrgSelection>(null)
   const [recipient, setRecipient] = useState('')
 
-  // Block 2 — Payment details
-  const [useCustomToken, setUseCustomToken] = useState(false)
+  // Block 2 — Payment details. Token comes from the Uniswap-whitelisted tokens the
+  // Safe holds (useSafeTokens), or a custom address (escape hatch, kept for the
+  // testnets the whitelist doesn't cover).
+  const [tokenMode, setTokenMode] = useState<'whitelist' | 'custom'>('whitelist')
+  const [selectedToken, setSelectedToken] = useState<HeldToken | null>(null)
   const [customToken, setCustomToken] = useState('')
   const [tokenMeta, setTokenMeta] = useState<{ name: string; symbol: string; decimals: number } | null>(null)
   const [tokenStatus, setTokenStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const safeTokens = useSafeTokens(safe.safeAddress as Address, safe.chainId)
+  const useCustomToken = tokenMode === 'custom'
   const [amount, setAmount] = useState('')
   const [period, setPeriod] = useState<PeriodType>('monthly')
   const amountRef = useRef<HTMLInputElement>(null)
@@ -138,13 +145,14 @@ export default function CreateDelegation() {
     return () => { cancelled = true }
   }, [useCustomToken, customToken, safe.chainId])
 
-  const defaultUsdc = USDC_ADDRESS[safe.chainId]
-  const tokenAddress = useCustomToken ? customToken : defaultUsdc
-  const decimals = useCustomToken ? (tokenMeta?.decimals ?? 6) : 6
-  const tokenSymbol = useCustomToken ? (tokenMeta?.symbol ?? 'tokens') : 'USDC'
+  const tokenAddress = useCustomToken ? customToken : (selectedToken?.address ?? '')
+  const decimals = useCustomToken ? (tokenMeta?.decimals ?? 6) : (selectedToken?.decimals ?? 6)
+  const tokenSymbol = useCustomToken ? (tokenMeta?.symbol ?? 'tokens') : (selectedToken?.symbol ?? 'token')
 
   const recipientValid = isAddress(recipient)
-  const tokenValid = useCustomToken ? (isAddress(customToken) && tokenStatus === 'ok') : (!!tokenAddress && isAddress(tokenAddress))
+  const tokenValid = useCustomToken
+    ? (isAddress(customToken) && tokenStatus === 'ok')
+    : (!!selectedToken && isAddress(selectedToken.address))
   const periodSeconds = Number(periodToSeconds(period))
 
   const fmt = (raw: bigint) => trimAmount(formatUnits(raw, decimals))
@@ -357,7 +365,8 @@ export default function CreateDelegation() {
     setRecipient('')
     setAmount('')
     setPeriod('monthly')
-    setUseCustomToken(false)
+    setTokenMode('whitelist')
+    setSelectedToken(null)
     setCustomToken('')
     setTokenMeta(null)
     setTokenStatus('idle')
@@ -452,9 +461,9 @@ export default function CreateDelegation() {
           title="Payment details"
           action={
             <Segmented
-              value={useCustomToken}
-              onChange={setUseCustomToken}
-              options={[{ key: false, label: <USDC size={15} /> }, { key: true, label: 'Custom ERC-20' }]}
+              value={tokenMode}
+              onChange={setTokenMode}
+              options={[{ key: 'whitelist', label: 'Safe tokens' }, { key: 'custom', label: 'Custom ERC-20' }]}
             />
           }
         >
@@ -467,8 +476,27 @@ export default function CreateDelegation() {
               )}
               {tokenStatus === 'error' && customToken && <p className="text-xs text-danger mt-1">Not a readable ERC-20 on {chainName(safe.chainId)} — make sure the token is deployed on this chain.</p>}
             </div>
+          ) : safeTokens.loading ? (
+            <p className="text-xs text-faint mt-1">Reading tokens held by the Safe…</p>
+          ) : safeTokens.tokens.length > 0 ? (
+            <div>
+              <select
+                aria-label="Token"
+                value={selectedToken?.address ?? ''}
+                onChange={(e) => setSelectedToken(safeTokens.tokens.find((t) => t.address === e.target.value) ?? null)}
+                className="px-2"
+              >
+                <option value="" disabled>Select a token…</option>
+                {safeTokens.tokens.map((t) => (
+                  <option key={t.address} value={t.address}>
+                    {t.symbol} — {trimAmount(formatUnits(t.balance, t.decimals))} held
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-faint mt-1">Uniswap-vetted tokens held by this Safe on {chainName(safe.chainId)}.</p>
+            </div>
           ) : (
-            <p className="text-xs text-faint"><span className="text-ink font-semibold">USDC</span> · USD Coin · 6 decimals</p>
+            <p className="text-xs text-faint mt-1">No Uniswap-vetted tokens with a balance found in this Safe on {chainName(safe.chainId)}. Use a custom ERC-20 address instead.</p>
           )}
 
           <Field label="Cap per period" required missing={errs.amount} hint="The most that can be charged in one period. It resets each period — unused amounts don't roll over.">
