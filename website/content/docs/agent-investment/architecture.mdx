@@ -1,0 +1,93 @@
+---
+title: Architecture
+description: Two safes, two delegations — how a treasury enforces an on-chain per-period budget for an agent that swaps.
+icon: Network
+---
+
+A swap cannot be bounded "per period" on-chain: the period enforcers only accept a
+literal `transfer`, and revert on a swap (see [Strategies](/docs/agent-investment/strategies)).
+The way around it is **two safes and two delegations**: the treasury enforces the
+per-period budget with a *transfer* delegation to a dedicated **DCA safe**, and the
+agent swaps out of that DCA safe under a *balance-change* delegation. The DCA safe's
+balance becomes the real, on-chain per-period cap.
+
+## The two-safe model
+
+```
+┌──────────────────┐
+│   Treasury safe   │   the real funds
+└──────────────────┘
+      │
+      │  Delegation 1 — periodic transfer (erc20PeriodTransfer)
+      │  "at most 50 USDC per week → the DCA safe"
+      │  Enforced on-chain: it's a transfer, so the period cap holds.
+      ▼
+┌──────────────────┐
+│    DCA safe       │   the strategy envelope — holds only the released budget
+└──────────────────┘
+      │
+      │  Delegation 2 — the strategy mandate (erc20BalanceChange)
+      │  "swap the DCA safe's balance, ≤ cap and ≤ max price per swap"
+      │  Enforced on-chain: the balance-change bounds hold on a swap.
+      ▼
+┌──────────────────┐
+│     Uniswap       │
+└──────────────────┘
+```
+
+## Why this unlocks the per-period cap
+
+- **Delegation 1 is a transfer**, so `erc20PeriodTransfer` accepts it and enforces
+  "≤ 50 USDC per week" **on-chain**. This is exactly what could not be done directly
+  on a swap.
+- **The DCA safe can only ever hold what the treasury released this period.** Even
+  if the agent swaps the entire DCA safe balance, it cannot exceed the weekly budget
+  — because the treasury only lets that much through. The temporal cap becomes real.
+- **Delegation 2 bounds each swap** (max spend + max price) via `erc20BalanceChange`,
+  as before. The agent still holds nothing; it only redeems.
+
+So the temporal budget (Delegation 1) and the per-swap safety (Delegation 2) are
+both enforced on-chain, split across the two safes.
+
+## Who owns what
+
+- The **DCA safe is created by the DAO itself** (via the standard Safe interface),
+  with the **same owners as the treasury**. It is an *envelope* of the same entity —
+  one per strategy — not a third party. Hourglass does not create it.
+- Each safe enables the DeleGator module (the app does this on the safe it runs in),
+  then signs its delegation from there.
+
+## What it unlocks
+
+This composes into a real system, not a single feature:
+
+- **Multiple strategies** — one DCA safe per strategy, each with its own periodic
+  budget and its own bounds. A DAO runs several in parallel without them touching
+  each other.
+- **Per-strategy agents** — a distinct agent assigned to each DCA safe, each with its
+  own enforcers. Compromising one agent bounds the loss to that one DCA safe's
+  budget, never the treasury.
+- **A clear separation** — the treasury is the single source; the DCA safes are
+  bounded envelopes; the agents are replaceable executors.
+
+## The operator flow
+
+1. **Set up the agent** — install the Hourglass agent skill; it creates the agent
+   wallet and returns its address.
+2. **Create the DCA safe** — the DAO creates a new Safe (same owners as the
+   treasury) to hold this strategy's budget.
+3. **Sign Delegation 1** — from the treasury, a periodic-transfer delegation to the
+   DCA safe (the per-period budget, enforced on-chain).
+4. **Sign Delegation 2** — from the DCA safe, the strategy mandate to the agent
+   (the per-swap bounds).
+5. **Hand the recap to the agent** — the strategy context (target, amount, cadence)
+   the agent pairs with the mandates it discovers.
+
+## Honest limits
+
+- **The DCA safe transiently holds the released budget.** This is not fully
+  non-custodial like a single-swap mandate — but the custody sits in a DAO-owned
+  Safe (same owners), bounded per period, never in the agent.
+- **Per-swap spacing ("once per day") is still off-chain.** The period cap bounds
+  the *amount* released per period, not the *number* of swaps or their spacing. The
+  cadence remains the agent's responsibility.
