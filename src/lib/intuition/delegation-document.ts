@@ -28,7 +28,7 @@ export interface DelegationDocument {
  * (erc20Streaming), or a strategy mandate (erc20BalanceChange — a per-swap spend
  * cap for an agent, e.g. DCA / range).
  */
-export type DelegationKind = 'subscription' | 'stream' | 'dca'
+export type DelegationKind = 'subscription' | 'stream' | 'dca' | 'approve'
 
 export interface DelegationDetails {
   kind: DelegationKind
@@ -49,12 +49,14 @@ const KIND_LABEL: Record<DelegationKind, string> = {
   subscription: 'Subscription',
   stream: 'Stream',
   dca: 'Strategy',
+  approve: 'Approve',
 }
 
 const KIND_ENFORCER: Record<DelegationKind, string> = {
   subscription: 'erc20PeriodTransfer',
   stream: 'erc20Streaming',
   dca: 'erc20BalanceChange',
+  approve: 'exactCalldata',
 }
 
 /** Cap on the derived amount string — a token with absurd `decimals` can make
@@ -72,6 +74,11 @@ export function describeDelegation(details: DelegationDetails): string {
   const symbol = cleanDisplayText(details.tokenSymbol, SYMBOL_MAX_CHARS)
   const amount = cleanDisplayText(details.amount, AMOUNT_MAX_CHARS)
   const enforcer = KIND_ENFORCER[details.kind]
+  if (details.kind === 'approve') {
+    // The limit-order companion: it grants the router an allowance on the funding
+    // token so the paired swap can run. No amount/period in the display.
+    return `${KIND_LABEL[details.kind]} delegation using the ${enforcer} enforcer, granting a ${symbol} allowance for a paired limit-order swap.`
+  }
   if (details.kind === 'dca') {
     // A strategy mandate bounds the loss per swap, not an amount per period.
     return `${KIND_LABEL[details.kind]} delegation using the ${enforcer} enforcer with a cap of ${amount} ${symbol} per ${details.period}.`
