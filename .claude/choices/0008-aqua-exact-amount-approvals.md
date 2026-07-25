@@ -70,6 +70,27 @@ hold steady. An exact approval is consumed after roughly one turnover and the
 strategy silently stops filling — a bad default for a rail whose whole appeal is
 unattended market-making.
 
+### Why we do not simply follow the README
+
+Aqua's README prescribes `token.approve(address(aqua), type(uint256).max)` and
+calls it **one-time**, with "maintain a single token approval" as a headline
+benefit. That claim is token-dependent, which the README does not say. Measured
+on a Base fork with a max approval and a real swap through each leg:
+
+| Token | Implementation | Max approval on pull |
+|---|---|---|
+| WETH `0x4200…0006` | WETH9 | **not** decremented — `if (allowance != uint(-1))` guard |
+| USDC `0x8335…2913` | FiatTokenV2_2 | **decremented** by exactly the amount pulled |
+
+So "one-time" holds for WETH-style tokens at exactly `type(uint256).max`, and
+does not hold for USDC — though at max the practical difference is nil, since
+exhausting 2^256 would take an absurd number of turnovers.
+
+With a **bounded** approval, which is what this repo issues, both tokens
+decrement on every pull. The depletion behaviour described above therefore
+applies to our approvals regardless of token, and headroom is what makes the
+bounded choice workable rather than merely safe-looking.
+
 Approvals now carry **10× headroom by default**, exposed as a two-option toggle
 (`Headroom ×10` / `Exact`) so it is one click to opt out. The multiplier is a
 named constant, the exact figure is shown per token before signing, and the
