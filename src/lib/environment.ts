@@ -30,9 +30,14 @@ export function getEnvironment(chainId: number) {
       ERC20PeriodTransferEnforcer: hourglass.erc20PeriodTransferEnforcer,
       TimestampEnforcer: hourglass.timestampEnforcer,
       ERC20StreamingEnforcer: hourglass.erc20StreamingEnforcer,
-      // The strategy rail (DCA / range) — route it through the HourGlass instance
-      // so mandates carry the HourGlass enforcer, matching discovery.
+      // The strategy / limit-order rail — route every enforcer these mandates use
+      // through the HourGlass instances, so the whole mandate is attributable to
+      // HourGlass (measurable by emitter address), not just the balance-change one.
       ERC20BalanceChangeEnforcer: hourglass.erc20BalanceChangeEnforcer,
+      AllowedTargetsEnforcer: hourglass.allowedTargetsEnforcer,
+      AllowedMethodsEnforcer: hourglass.allowedMethodsEnforcer,
+      ValueLteEnforcer: hourglass.valueLteEnforcer,
+      LimitedCallsEnforcer: hourglass.limitedCallsEnforcer,
     },
   }
 }
