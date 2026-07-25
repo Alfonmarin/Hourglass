@@ -5,11 +5,11 @@ import { DeleGatorModuleFactoryABI, SafeABI } from '../config/abis'
 import { getAddresses } from '../config/addresses'
 import { buildModuleInstallTxs, DEFAULT_SALT } from '../lib/module'
 import { getDelegations, type StoredDelegation } from '../lib/storage'
-import { useFinalizePending } from '../hooks/useFinalizePending'
+import { isLimitOrderRedeemed } from '../lib/limitOrderStatus'
 import { portalAtomUrl } from '../lib/intuition'
 import { periodToSeconds, isPeriodType } from '../lib/enforcers'
 import { SubscriptionDetail } from './SubscriptionDetail'
-import { Card, Btn, StatusBadge, Payee, type Status } from '../ui/components'
+import { Card, Btn, StatusBadge, Payee, STATUS, type Status } from '../ui/components'
 import { IconChip, IconCheck, IconPlus, IconRepeat, IconLock, IconCube, IconExt, IconAlert, IconArrowR } from '../ui/icons'
 import { findChain, rpcUrl } from '../config/supported-chains'
 
@@ -21,20 +21,21 @@ function tintFor(addr: string): { tint: string; logo: string } {
   for (let i = 2; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) >>> 0
   return { tint: palette[h % palette.length], logo: addr.slice(2, 4).toUpperCase() }
 }
-function statusOf(s: StoredDelegation['meta']['status']): Status {
+function statusOf(s: StoredDelegation['meta']['status'], redeemed = false): Status {
+  if (redeemed) return 'redeemed'
   return s === 'signed' ? 'active' : s === 'revoked' ? 'revoked' : 'pending'
 }
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
-function SubCard({ d, onOpen }: { d: StoredDelegation; onOpen: () => void }) {
-  const status = statusOf(d.meta.status)
+function SubCard({ d, onOpen, redeemed }: { d: StoredDelegation; onOpen: () => void; redeemed?: boolean }) {
+  const status = statusOf(d.meta.status, redeemed)
   const stream = d.meta.scopeType === 'erc20Streaming'
   const payeeAddr = d.meta.recipient ?? d.delegation.delegate
   const { tint, logo } = tintFor(payeeAddr)
-  const dim = status === 'revoked'
+  const dim = status === 'revoked' || status === 'redeemed'
   return (
     <Card hover onClick={onOpen} className={`p-5 cursor-pointer relative ${dim ? 'opacity-70' : ''}`}>
-      <span className="absolute left-0 top-5 bottom-5 w-[3px] rounded-full" style={{ background: status === 'active' ? '#34D399' : status === 'pending' ? '#FBBF24' : '#FB7185' }} />
+      <span className="absolute left-0 top-5 bottom-5 w-[3px] rounded-full" style={{ background: STATUS[status].dot }} />
       <div className="flex items-start justify-between gap-3">
         <Payee logo={logo} tint={tint} name={d.meta.label} addr={short(payeeAddr)} />
         <div className="flex items-center gap-2 shrink-0">
@@ -87,9 +88,6 @@ function SubCard({ d, onOpen }: { d: StoredDelegation; onOpen: () => void }) {
 
 export default function Home({ onNavigate }: { onNavigate: (page: Page) => void }) {
   const { sdk, safe } = useSafeAppsSDK()
-  // Finalize-on-open: recover finalized delegations from the Safe tx-service and
-  // index them, independent of when the Nth owner signed (ADR 0005).
-  useFinalizePending()
   const [moduleStatus, setModuleStatus] = useState<'loading' | 'installed' | 'not-installed' | 'error'>('loading')
   const [moduleAddress, setModuleAddress] = useState<Address | null>(null)
   const [installing, setInstalling] = useState(false)
@@ -97,6 +95,18 @@ export default function Home({ onNavigate }: { onNavigate: (page: Page) => void 
   const [safeInfo, setSafeInfo] = useState<{ owners: string[]; threshold: number } | null>(null)
   const [subs, setSubs] = useState<StoredDelegation[]>(() => getDelegations())
   const [selected, setSelected] = useState<StoredDelegation | null>(null)
+  // Limit orders are one-shot; once fired on-chain, show them as Redeemed not Active.
+  const [redeemedHashes, setRedeemedHashes] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const orders = subs.filter((d) => d.meta.strategyKind === 'limitOrder' && d.meta.status === 'signed')
+    if (orders.length === 0) return
+    let cancelled = false
+    Promise.all(orders.map(async (d) => ((await isLimitOrderRedeemed(d.meta.chainId, d.meta.delegationHash)) ? d.meta.delegationHash.toLowerCase() : null)))
+      .then((hits) => { if (!cancelled) setRedeemedHashes(new Set(hits.filter((h): h is string => h !== null))) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [subs])
 
   function refresh() {
     const next = getDelegations()
@@ -248,7 +258,7 @@ export default function Home({ onNavigate }: { onNavigate: (page: Page) => void 
       ) : (
         <div className="grid grid-cols-2 gap-4">
           {subs.map((d) => (
-            <SubCard key={d.meta.delegationHash} d={d} onOpen={() => setSelected(d)} />
+            <SubCard key={d.meta.delegationHash} d={d} onOpen={() => setSelected(d)} redeemed={redeemedHashes.has(d.meta.delegationHash.toLowerCase())} />
           ))}
         </div>
       )}

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
 import { createPublicClient, http, isAddress, parseUnits, type Address, type Hex } from 'viem'
+import { readErc20Meta } from '../lib/erc20'
 import { useSafeTokens } from '../hooks/useSafeTokens'
 import { useWhitelistedTokens } from '../hooks/useWhitelistedTokens'
 import type { HeldToken } from '../lib/safe-balances'
@@ -39,27 +40,74 @@ export default function Strategy() {
   const [tokenMode, setTokenMode] = useState<'whitelist' | 'custom'>('whitelist')
   const [selectedToken, setSelectedToken] = useState<HeldToken | null>(null)
   const [customToken, setCustomToken] = useState('')
+  // Resolved decimals for a custom funding token (read on-chain — never assumed).
+  const [customFundingDecimals, setCustomFundingDecimals] = useState<number | null>(null)
   // Buy token (the swap output — from the full whitelist, not held yet).
   const [buyMode, setBuyMode] = useState<'whitelist' | 'custom'>('whitelist')
   const [selectedBuy, setSelectedBuy] = useState<WhitelistedToken | null>(null)
   const [customBuy, setCustomBuy] = useState('')
+  const [customBuyDecimals, setCustomBuyDecimals] = useState<number | null>(null)
   const [buyAmount, setBuyAmount] = useState('')
   const [frequency, setFrequency] = useState<Frequency>('weekly')
-  // Guardrail (the on-chain guarantee — the cap the caveat enforces).
+  // Guardrail (the on-chain guarantees — the caveats enforce these).
   const [cap, setCap] = useState('')
+  // Max price to pay (funding per target, e.g. USDC per WETH). Derives the
+  // min-received bound: a swap only clears if the price is at or below this.
+  const [maxPrice, setMaxPrice] = useState('')
   const [agent, setAgent] = useState('')
   const [step, setStep] = useState<SignStep>('idle')
   const [error, setError] = useState<string | null>(null)
+  // The instruction the operator hands to their agent — the DCA intent (target,
+  // amount, cadence) that is NOT published on-chain, keyed to the mandate.
+  const [recap, setRecap] = useState<string | null>(null)
 
   const useCustom = tokenMode === 'custom'
   const fundingAddress = useCustom ? customToken : (selectedToken?.address ?? '')
   const fundingSymbol = useCustom ? 'tokens' : (selectedToken?.symbol ?? 'token')
-  const decimals = useCustom ? 18 : (selectedToken?.decimals ?? 6)
-
   const useCustomBuy = buyMode === 'custom'
   const targetToken = useCustomBuy ? customBuy : (selectedBuy?.address ?? '')
 
-  const capRaw = (() => { try { return cap ? parseUnits(cap, decimals) : 0n } catch { return 0n } })()
+  // Resolve a custom token's decimals on-chain — never assume. `null` = not yet
+  // resolved (or unreadable), in which case amounts stay unset rather than wrong.
+  useEffect(() => {
+    if (!useCustom || !isAddress(customToken)) { setCustomFundingDecimals(null); return }
+    const chain = findChain(safe.chainId); if (!chain) return
+    const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+    let cancelled = false
+    readErc20Meta(client, customToken as Address)
+      .then((m) => { if (!cancelled) setCustomFundingDecimals(m.decimals) })
+      .catch(() => { if (!cancelled) setCustomFundingDecimals(null) })
+    return () => { cancelled = true }
+  }, [useCustom, customToken, safe.chainId])
+
+  useEffect(() => {
+    if (!useCustomBuy || !isAddress(customBuy)) { setCustomBuyDecimals(null); return }
+    const chain = findChain(safe.chainId); if (!chain) return
+    const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+    let cancelled = false
+    readErc20Meta(client, customBuy as Address)
+      .then((m) => { if (!cancelled) setCustomBuyDecimals(m.decimals) })
+      .catch(() => { if (!cancelled) setCustomBuyDecimals(null) })
+    return () => { cancelled = true }
+  }, [useCustomBuy, customBuy, safe.chainId])
+
+  // Decimals: known from the whitelist token, or resolved on-chain for a custom
+  // one. `null` for an unresolved custom token — amounts then stay 0 (not wrong).
+  const decimals = useCustom ? customFundingDecimals : (selectedToken?.decimals ?? null)
+  const targetDecimals = useCustomBuy ? customBuyDecimals : (selectedBuy?.decimals ?? null)
+
+  const capRaw = (() => { try { return cap && decimals !== null ? parseUnits(cap, decimals) : 0n } catch { return 0n } })()
+
+  // Min received (raw, target units) = capSpend / maxPrice. The swap must return
+  // at least this much of the bought token, so it only clears when the effective
+  // price is ≤ maxPrice. Zero when either input is missing (bound then omitted).
+  const minReceivedRaw = (() => {
+    const spend = parseFloat(cap)
+    const price = parseFloat(maxPrice)
+    if (!(spend > 0) || !(price > 0) || targetDecimals === null) return 0n
+    try { return parseUnits((spend / price).toFixed(targetDecimals), targetDecimals) } catch { return 0n }
+  })()
+
   const fundingValid = isAddress(fundingAddress)
   const targetValid = isAddress(targetToken)
   const agentValid = isAddress(agent)
@@ -87,7 +135,18 @@ export default function Strategy() {
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
         swapRouter: router,
-        caps: [{ tokenAddress: fundingAddress as Address, recipient: moduleAddress, amount: capRaw }],
+        // The bounds watch the Safe, not the module: the module executes via
+        // safe.execTransactionFromModule, so the swap runs with msg.sender == the Safe
+        // — the Safe is what spends the funding token and receives the bought token.
+        // Watching the module (which holds nothing) makes the enforcer revert.
+        bounds: [
+          // Max spend on the funding token — the anti-drain cap.
+          { tokenAddress: fundingAddress as Address, recipient: safe.safeAddress as Address, amount: capRaw, direction: 'decrease' as const },
+          // Min received on the bought token — the price floor (only if a max price is set).
+          ...(minReceivedRaw > 0n
+            ? [{ tokenAddress: targetToken as Address, recipient: safe.safeAddress as Address, amount: minReceivedRaw, direction: 'increase' as const }]
+            : []),
+        ],
       })
 
       setStep('signing')
@@ -119,6 +178,23 @@ export default function Strategy() {
           enforceDecrease: true,
         },
       })
+
+      // The instruction to hand to the agent: the intent that isn't on-chain,
+      // keyed to the mandate by delegationHash + agent so the agent can match it
+      // to what it discovers on Intuition.
+      setRecap(JSON.stringify({
+        hourglassStrategy: 'dca',
+        chainId: safe.chainId,
+        safe: safe.safeAddress,
+        agent,
+        delegationHash: computeDelegationHash(signed),
+        fundingToken: fundingAddress,
+        targetToken,
+        amountPerBuy: buyAmount,
+        frequency,
+        capPerSwap: cap,
+        maxPrice: maxPrice || null,
+      }, null, 2))
       setStep('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign the strategy')
@@ -245,7 +321,7 @@ export default function Strategy() {
           </Block>
 
           <Block title="Guardrail">
-            <p className="text-xs text-dim -mt-1 leading-relaxed">Enforced on-chain — the agent can never exceed this per swap, whatever it does.</p>
+            <p className="text-xs text-dim -mt-1 leading-relaxed">Enforced on-chain — the agent can never exceed the spend or pay above the price, whatever it does.</p>
             <Field label="Max per swap" required missing={cap !== '' && capRaw === 0n}>
               <div className="relative">
                 <input
@@ -255,6 +331,17 @@ export default function Strategy() {
                   className="pr-12"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">{fundingSymbol}</span>
+              </div>
+            </Field>
+            <Field label="Max price" hint="The swap only clears at or below this price. Leave empty to skip the price floor.">
+              <div className="relative">
+                <input
+                  type="text" inputMode="decimal" placeholder="3000"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(dec(e.target.value))}
+                  className="pr-24"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">{fundingSymbol} / {selectedBuy?.symbol ?? 'token'}</span>
               </div>
             </Field>
           </Block>
@@ -295,9 +382,13 @@ export default function Strategy() {
             {step === 'done' ? (
               <div className="rounded-xl glass-soft ring-1 ring-line p-4 space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-active">
-                  <IconCheck size={16} /> Strategy signed — the agent can trade under the cap.
+                  <IconCheck size={16} /> Strategy signed.
                 </div>
-                <CopyChip value={agent} label="Copy agent address" />
+                <p className="text-xs text-dim leading-relaxed">
+                  The cap is on-chain; the recurring buy is not. Hand this instruction to your agent — it pairs it with the
+                  mandate it discovers on Intuition.
+                </p>
+                {recap && <CopyChip value={recap} label="Copy agent instruction" />}
               </div>
             ) : (
               <Btn kind="primary" size="lg" onClick={handleSign} disabled={!canSign} className="w-full">

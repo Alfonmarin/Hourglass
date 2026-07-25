@@ -21,9 +21,14 @@ One EIP-712 delegation, signed by the Safe, carrying:
 - A **`functionCall` scope** — whitelists exactly two things: `approve(address,uint256)`
   on the funding token, and `execute(bytes,bytes[],uint256)` on the Uniswap Universal
   Router. The agent can call nothing else. Any other target or method reverts.
-- An **`erc20BalanceChange` caveat (Decrease)** — caps how much of the funding token
-  the Safe may lose **per redemption**. The enforcer reads the Safe's balance before
-  and after and reverts if the decrease exceeds the cap.
+- One or two **`erc20BalanceChange` caveats**, both enforced per redemption by
+  reading the Safe's balance before and after:
+  - A **Decrease** on the funding token — the **max spend** (anti-drain cap). The
+    Safe cannot lose more than this per swap.
+  - Optionally an **Increase** on the bought token — the **min received**, derived
+    from a max price. The swap only clears if the Safe receives at least this much,
+    i.e. the effective price is at or below the operator's max. Both revert the
+    redeem if violated.
 
 The mandate's DCA intent (target token, amount, cadence) is **not** in the caveat.
 It lives in the mandate's metadata on Intuition — an instruction the agent follows,

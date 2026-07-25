@@ -29,7 +29,8 @@ Every strategy is one delegation carrying a `functionCall` scope plus the cap:
 | Part | What it does |
 |---|---|
 | `functionCall` scope | whitelists the call surface — `approve` on the funding token, `execute` on the Uniswap Universal Router. The agent can call nothing else. |
-| `erc20BalanceChange` (Decrease) | caps the funding token the Safe can lose **per swap** — the on-chain guarantee. |
+| `erc20BalanceChange` (Decrease) | caps the funding token the Safe can lose **per swap** — the max spend. |
+| `erc20BalanceChange` (Increase), optional | requires a **minimum received** of the bought token — the price floor. Derived from a max price, it only lets the swap clear when the effective price is at or below it. |
 
 The swap runs **as the Safe** (through its DeleGator module): funds leave the Safe
 only into the swap, and the bought token returns to the Safe. The agent holds
@@ -45,9 +46,11 @@ A DCA strategy has two layers, and only one of them is enforced on-chain:
   metadata (published on Intuition, see [discovery](/docs/concepts/discovery)) and
   are carried out **by the agent, off-chain**. The chain does not guarantee the
   cadence.
-- **The guardrail** — "at most 55 USDC per swap". This is the `erc20BalanceChange`
-  cap. It **is** enforced on-chain: a buggy or compromised agent still cannot
-  exceed it, touch another contract, or drain the Safe.
+- **The guardrails** — "at most 55 USDC per swap" and, if a max price is set, "pay
+  no more than that price". These are the `erc20BalanceChange` bounds (a max-spend
+  Decrease, and an optional min-received Increase). They **are** enforced on-chain:
+  a buggy or compromised agent still cannot overspend, overpay, touch another
+  contract, or drain the Safe.
 
 The Strategy tab presents these as separate blocks so the distinction is explicit:
 what the agent promises versus what the contract guarantees.

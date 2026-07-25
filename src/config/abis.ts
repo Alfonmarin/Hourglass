@@ -207,3 +207,50 @@ export const DelegationManagerABI = [
     type: 'function',
   },
 ] as const
+
+/**
+ * Aqua — the shared-liquidity registry. `ship`/`dock` manage a strategy's
+ * virtual balances; `rawBalances` reads one back (a `tokensCount` of 255 means
+ * the strategy has been docked). `pull`/`push` are the swap-execution surface
+ * and are called by apps, never by us.
+ */
+export const AquaABI = [
+  {
+    inputs: [
+      { name: 'app', type: 'address' },
+      { name: 'strategy', type: 'bytes' },
+      { name: 'tokens', type: 'address[]' },
+      { name: 'amounts', type: 'uint256[]' },
+    ],
+    name: 'ship',
+    outputs: [{ name: 'strategyHash', type: 'bytes32' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'app', type: 'address' },
+      { name: 'strategyHash', type: 'bytes32' },
+      { name: 'tokens', type: 'address[]' },
+    ],
+    name: 'dock',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'maker', type: 'address' },
+      { name: 'app', type: 'address' },
+      { name: 'strategyHash', type: 'bytes32' },
+      { name: 'token', type: 'address' },
+    ],
+    name: 'rawBalances',
+    outputs: [
+      { name: 'balance', type: 'uint248' },
+      { name: 'tokensCount', type: 'uint8' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
