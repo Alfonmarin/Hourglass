@@ -13,6 +13,7 @@ import { getAddresses } from '../config/addresses'
 import { DeleGatorModuleFactoryABI } from '../config/abis'
 import { DEFAULT_SALT } from '../lib/module'
 import { UNIVERSAL_ROUTER } from '../config/uniswap'
+import { checkPermit2, buildPermit2Setup } from '../lib/permit2'
 import { findChain, rpcUrl } from '../config/supported-chains'
 import { saveDelegation } from '../lib/storage'
 import { Card, Btn, Mono, CopyChip } from '../ui/components'
@@ -43,6 +44,9 @@ export default function LimitOrder() {
   const [step, setStep] = useState<SignStep>('idle')
   const [error, setError] = useState<string | null>(null)
   const [recap, setRecap] = useState<string | null>(null)
+  // Permit2 setup: null = unknown/checking, true = the Safe can trade, false = needs setup.
+  const [permit2Ready, setPermit2Ready] = useState<boolean | null>(null)
+  const [permit2Busy, setPermit2Busy] = useState(false)
 
   const useCustom = tokenMode === 'custom'
   const fundingAddress = useCustom ? customToken : (selectedToken?.address ?? '')
@@ -89,6 +93,41 @@ export default function LimitOrder() {
   const router = UNIVERSAL_ROUTER[safe.chainId]
   const canSign = Boolean(fundingValid && targetValid && spendRaw > 0n && minReceivedRaw > 0n && agentValid && router && step === 'idle')
 
+  // Does the Safe already hold the Permit2 allowances the router needs to pull the
+  // funding token? Re-check whenever the token or spend changes. The swap redeem
+  // reverts (Permit2 AllowanceExpired) without this one-time setup.
+  useEffect(() => {
+    if (!fundingValid || spendRaw <= 0n || !router) { setPermit2Ready(null); return }
+    const chain = findChain(safe.chainId); if (!chain) return
+    const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+    let cancelled = false
+    checkPermit2(client, { safe: safe.safeAddress as Address, token: fundingAddress as Address, router, amount: spendRaw, now: Math.floor(Date.now() / 1000) })
+      .then((s) => { if (!cancelled) setPermit2Ready(s.ready) })
+      .catch(() => { if (!cancelled) setPermit2Ready(null) })
+    return () => { cancelled = true }
+  }, [fundingValid, fundingAddress, spendRaw, router, safe.chainId, safe.safeAddress, permit2Busy])
+
+  async function handleEnableTrading() {
+    setError(null)
+    if (!router || !fundingValid) return
+    setPermit2Busy(true)
+    try {
+      const chain = findChain(safe.chainId)
+      if (!chain) throw new Error('Unsupported chain')
+      const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+      const status = await checkPermit2(client, { safe: safe.safeAddress as Address, token: fundingAddress as Address, router, amount: spendRaw, now: Math.floor(Date.now() / 1000) })
+      const txs = buildPermit2Setup(fundingAddress as Address, router, status)
+      if (txs.length === 0) { setPermit2Ready(true); return }
+      // One batched Safe transaction (both approvals) — a single signing action.
+      await sdk.txs.send({ txs })
+      // The Safe tx is async (multisig); flip the flag to re-check once mined.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to enable trading')
+    } finally {
+      setPermit2Busy(false)
+    }
+  }
+
   async function handleSign() {
     setError(null)
     if (!router) return setError(`No swap router configured for ${safe.chainId}`)
@@ -105,7 +144,7 @@ export default function LimitOrder() {
         args: [safe.safeAddress as Address, DEFAULT_SALT],
       })) as Address
 
-      const { approve, swap } = buildLimitOrderMandate({
+      const mandate = buildLimitOrderMandate({
         moduleAddress,
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
@@ -122,58 +161,31 @@ export default function LimitOrder() {
         minReceived: minReceivedRaw,
       })
 
-      // Two signatures: the approve grant, then the price-bounded swap grant. The
-      // agent redeems both in one call, so both must be signed and published.
       setStep('signing')
-      const approveTyped = buildDelegationTypedData(approve, safe.chainId)
-      const approveRes = (await sdk.txs.signTypedMessage(approveTyped as never)) as { signature?: Hex; safeTxHash?: Hex }
-      const approveSigned = { ...approve, signature: (approveRes?.signature || approveRes?.safeTxHash || '0x') as Hex }
+      const typedData = buildDelegationTypedData(mandate, safe.chainId)
+      const result = (await sdk.txs.signTypedMessage(typedData as never)) as { signature?: Hex; safeTxHash?: Hex }
+      const signed = { ...mandate, signature: (result?.signature || result?.safeTxHash || '0x') as Hex }
+      const delegationHash = computeDelegationHash(signed)
 
-      const swapTyped = buildDelegationTypedData(swap, safe.chainId)
-      const swapRes = (await sdk.txs.signTypedMessage(swapTyped as never)) as { signature?: Hex; safeTxHash?: Hex }
-      const swapSigned = { ...swap, signature: (swapRes?.signature || swapRes?.safeTxHash || '0x') as Hex }
-
-      const approveHash = computeDelegationHash(approveSigned)
-      const swapHash = computeDelegationHash(swapSigned)
-
-      const common = {
-        createdAt: new Date().toISOString(),
-        chainId: safe.chainId,
-        safeAddress: safe.safeAddress as Address,
-        moduleAddress,
-        status: 'signed' as const,
-        recipient: agent as Address,
-        strategyKind: 'limitOrder' as const,
-        tokenAddress: fundingAddress as Address,
-        targetToken: targetToken as Address,
-      }
-
-      // The swap is the strategy carrier (spend cap + price trigger + one-shot); the
-      // approve is its companion, paired by delegationHash so discovery reunites them.
       saveDelegation({
-        delegation: swapSigned,
+        delegation: signed,
         meta: {
-          ...common,
           label: 'Limit order',
           scopeType: 'strategyMandate',
-          delegationHash: swapHash,
-          safeMessageHash: swapRes?.safeTxHash,
+          createdAt: new Date().toISOString(),
+          chainId: safe.chainId,
+          safeAddress: safe.safeAddress as Address,
+          moduleAddress,
+          status: 'signed',
+          delegationHash,
+          safeMessageHash: result?.safeTxHash,
+          recipient: agent as Address,
+          strategyKind: 'limitOrder',
+          tokenAddress: fundingAddress as Address,
+          targetToken: targetToken as Address,
           amount: spend,
           capPerSwap: spend,
           enforceDecrease: true,
-          pairedApproveHash: approveHash,
-        },
-      })
-      saveDelegation({
-        delegation: approveSigned,
-        meta: {
-          ...common,
-          label: 'Limit order approve',
-          scopeType: 'strategyMandate',
-          delegationHash: approveHash,
-          safeMessageHash: approveRes?.safeTxHash,
-          amount: spend,
-          pairedSwapHash: swapHash,
         },
       })
 
@@ -182,8 +194,7 @@ export default function LimitOrder() {
         chainId: safe.chainId,
         safe: safe.safeAddress,
         agent,
-        swapDelegationHash: swapHash,
-        approveDelegationHash: approveHash,
+        delegationHash,
         fundingToken: fundingAddress,
         targetToken,
         maxSpend: spend,
@@ -305,9 +316,22 @@ export default function LimitOrder() {
                 {recap && <CopyChip value={recap} label="Copy agent instruction" />}
               </div>
             ) : (
-              <Btn kind="primary" size="lg" onClick={handleSign} disabled={!canSign} className="w-full">
-                {step === 'preparing' ? 'Preparing…' : step === 'signing' ? 'Signing…' : 'Sign order'}
-              </Btn>
+              <>
+                {/* Permit2 is a one-time setup per funding token: the router pulls the
+                    token through it, so without it the swap redeem reverts. */}
+                {permit2Ready === false && (
+                  <div className="rounded-xl bg-raised ring-1 ring-line p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-medium text-pending"><IconAlert size={14} /> One-time setup needed</div>
+                    <p className="text-[11px] text-dim leading-relaxed">Allow the router to trade {fundingSymbol} from this Safe (Permit2). Signed once, reused by every order.</p>
+                    <Btn kind="ghost" size="sm" onClick={handleEnableTrading} disabled={permit2Busy} className="w-full">
+                      {permit2Busy ? 'Submitting…' : `Enable ${fundingSymbol} trading`}
+                    </Btn>
+                  </div>
+                )}
+                <Btn kind="primary" size="lg" onClick={handleSign} disabled={!canSign || permit2Ready === false} className="w-full">
+                  {step === 'preparing' ? 'Preparing…' : step === 'signing' ? 'Signing…' : 'Sign order'}
+                </Btn>
+              </>
             )}
           </div>
         </Card>
