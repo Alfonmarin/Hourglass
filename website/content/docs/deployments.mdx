@@ -1,0 +1,128 @@
+---
+title: Deployments
+description: Every contract HourGlass has deployed on-chain, with verified source.
+icon: FileCode
+---
+
+HourGlass has no contract logic of its own. What it deploys are **its own instances
+of MetaMask's audited caveat enforcers** — unmodified bytecode at a different
+address — plus the `DeleGatorModuleFactory` that was missing on Ethereum mainnet.
+
+Why redeploy something that already exists: the enforcer address is the emitter of
+the caveat events, so an HourGlass-owned instance makes a charge attributable to
+HourGlass by a single filter, with no central registry. The reasoning is in
+[Analytics](/docs/analytics) and the trust implications in
+[Security](/docs/security#self-deployed-enforcer-instances).
+
+## What "unmodified" means here
+
+Each address below was produced by CREATE2 from the salt `bytes32("OURGLASS")` and
+the compiled artifact of the corresponding `@metamask/delegation-framework`
+contract. The salt and the creation bytecode fully determine the address, so anyone
+can recompute it and confirm nothing else was deployed there.
+
+The salt reads `OURGLASS`, not `HOURGLASS`: it predates the rename and is baked into
+every address above. Changing it would produce an entirely different address set, so
+it stays as deployed. Use `OURGLASS` when recomputing.
+
+All of them carry verified source on Etherscan (solc 0.8.23, optimizer enabled at
+200 runs, EVM version `london`). Most were accepted as already-verified on
+submission — Etherscan matched the bytecode against MetaMask's own verified
+instances, which is exactly the property being claimed.
+
+Because the address depends only on the salt and the bytecode, **the same contract
+has the same address on every chain**. The tables below therefore apply to both
+Ethereum mainnet and Base — a given enforcer is at one address, everywhere.
+
+## Ethereum mainnet (chain 1) and Base (chain 8453)
+
+Deployer: `0x2FF0363132d0dc5feb090790C46B77EF1ce96aa2`. On Ethereum mainnet, the
+three enforcers HourGlass delegations reference were deployed 2026-06-25 and the rest
+of the suite on 2026-07-25. On Base, all 37 were deployed 2026-07-25.
+
+Source is verified on Etherscan for mainnet and on Basescan for Base.
+
+### Infrastructure
+
+The `DelegationManager` is MetaMask's canonical deterministic deployment, identical
+everywhere. The factory is **not** deterministic, so it differs per chain. Both
+factories carry verified source; their code lives in the `delegator-safe-module`
+project, not in the Delegation Framework.
+
+| Contract | Chain | Address |
+|---|---|---|
+| `DelegationManager` (MetaMask, canonical) | all | `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3` |
+| `DeleGatorModuleFactory` | Ethereum mainnet | `0xbDDE43bCf6Db9DBeB1127E6574CCF70BFb1c2DC3` |
+| `DeleGatorModuleFactory` | Base | `0x0D0421e43057bf850e243EcDA2AD8966C8D5877B` |
+
+### Enforcers referenced by HourGlass delegations
+
+These three are the ones the app actually routes through — a subscription cap, its
+optional end date, and the payroll stream.
+
+| Contract | Address |
+|---|---|
+| `ERC20PeriodTransferEnforcer` | `0x11262E3116a50654547AB0A417BE77eB14b9F339` |
+| `TimestampEnforcer` | `0xF1635460548F44543366ec4453D512a7Ce85Af85` |
+| `ERC20StreamingEnforcer` | `0xE475D14d61756D6e940B74C20d2E44EB70c71a8D` |
+
+### Rest of the suite
+
+Deployed so that any future delegation shape can reference an HourGlass-owned
+enforcer without a new deployment round. They are **not** wired into the app today.
+
+| Contract | Address |
+|---|---|
+| `AllowedCalldataEnforcer` | `0xb418A0C7003F15EEC765D1e1c0E198cA8531fABe` |
+| `AllowedMethodsEnforcer` | `0x5FFb84883543A9ED068b1D3DB428037e95C1f26A` |
+| `AllowedTargetsEnforcer` | `0x71832d69693A818C7e6163e632c5e3fBedf65362` |
+| `ApprovalRevocationEnforcer` | `0xa92E4c2f624ac064875CA92beDa44629958A0803` |
+| `ArgsEqualityCheckEnforcer` | `0xAF081f825b0Fd4D1cA3b56E2766248A3689Aea4f` |
+| `BlockNumberEnforcer` | `0xDaE46FC044CC9A03E0274E51c900946F52afC59A` |
+| `DeployedEnforcer` | `0x0F40211A6E6B68920690f2a0619714283706E7b3` |
+| `ERC1155BalanceChangeEnforcer` | `0x341CD2A57ececdAbd41D348b7B616C63D3Ba86f7` |
+| `ERC1155MultiOperationIncreaseBalanceEnforcer` | `0x7a6c0065a6306b93e82E5Dc7BFD871990a0F910E` |
+| `ERC20BalanceChangeEnforcer` | `0xf069a9da3987eDA46F711dC40012f3674c6Ad517` |
+| `ERC20MultiOperationIncreaseBalanceEnforcer` | `0xd1f2F8b225e16A1a22E0C760e25B8da5e58fbb88` |
+| `ERC20TransferAmountEnforcer` | `0xf180Ec5552f7251268540f5D0292e44e6cD37491` |
+| `ERC721BalanceChangeEnforcer` | `0x3a9aF4D3089F6755f80FF5568268CC1fFd233103` |
+| `ERC721MultiOperationIncreaseBalanceEnforcer` | `0xF9D8b696eb1FC8E07F17aF2b491B36e63985f814` |
+| `ERC721TransferEnforcer` | `0x9ACf459b3495626a1Fb7B9e60519582c273295e7` |
+| `ExactCalldataBatchEnforcer` | `0xE7dB63Ae90BF479Fd3Ca0148Eca73560DD324591` |
+| `ExactCalldataEnforcer` | `0x0a1A4e45Be9183465c0f4ac7907605269B2a2573` |
+| `ExactExecutionBatchEnforcer` | `0x1c0e253Ef34F05f9Bb35bc373F811A719478a4BB` |
+| `ExactExecutionEnforcer` | `0xb0deD8b9f02f8D100078F1AA75Ab9FCDB0D5e729` |
+| `IdEnforcer` | `0xF60958a138A885FD10418E7b0D76Ceb45AA25605` |
+| `LimitedCallsEnforcer` | `0x0c6a3a33d02c7bEb6B066960CE92DF8CC8EA35C8` |
+| `LogicalOrWrapperEnforcer` | `0x3FeDC2610F558E6a0e5c5d9A591E4621C76Ea4f7` |
+| `MultiTokenPeriodEnforcer` | `0xAA7E306EcBCFF5A5b37BE13d8a4655E0998D8E87` |
+| `NativeBalanceChangeEnforcer` | `0xF069FB64eFDBdA222a86952fC71E87CC6731d545` |
+| `NativeTokenMultiOperationIncreaseBalanceEnforcer` | `0x23D27CaFC7968C9C615a2CcDa9Ca80e36A0f76Ba` |
+| `NativeTokenPaymentEnforcer` | `0xD406D916bA7c155B186639f6f6783A17DFe81B1c` |
+| `NativeTokenPeriodTransferEnforcer` | `0xe96539D0aB03b9D7Dc45B2326E2FCdb598b721Dc` |
+| `NativeTokenStreamingEnforcer` | `0xC2db9C9c3fb2d15d67F4B89B61D6C7332C8B866B` |
+| `NativeTokenTransferAmountEnforcer` | `0x953AB69e4aeE3a5e311261573B826Daf29735e52` |
+| `NonceEnforcer` | `0x3266A5827F3fFED7c4BBa1a7F461F46C8D2835b6` |
+| `OwnershipTransferEnforcer` | `0xcA474A11645EeCBC225B60944940f81eCd1A7DF8` |
+| `RedeemerEnforcer` | `0x787308b5d74797E9FEA19cc186bcF12a19dcABB0` |
+| `SpecificActionERC20TransferBatchEnforcer` | `0xE9F0fb5011Db7F59763d999470af2b7f586712a0` |
+| `ValueLteEnforcer` | `0x9Fed2C8Bf48Af2c8C0D7E9aE089523Da78D0A076` |
+
+Two of them take constructor arguments: `LogicalOrWrapperEnforcer` receives the
+`DelegationManager`, and `NativeTokenPaymentEnforcer` receives the
+`DelegationManager` plus the HourGlass `ArgsEqualityCheckEnforcer` above — not the
+canonical one. Both are part of the verified source on Etherscan.
+
+## Other chains
+
+Base Sepolia and Ethereum Sepolia use MetaMask's canonical enforcer deployments. No
+HourGlass-owned instance exists there, so charges on those chains are not
+attributable by emitter address.
+
+## Verifying this yourself
+
+The addresses in this page are the ones the app uses, held in
+`src/config/addresses.ts` under chains 1 and 8453. To confirm an address holds what
+it claims, compare the on-chain bytecode against the corresponding artifact from
+`@metamask/delegation-framework` — the deployed runtime code is byte-identical to
+the audited release.
