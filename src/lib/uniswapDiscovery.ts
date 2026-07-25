@@ -78,27 +78,31 @@ export async function discoverPools(client: PublicClient, chainId: number): Prom
   return found
 }
 
-interface PoolDayData {
-  feesUSD: string
-  tvlUSD: string
+interface LiquidityPoolQueryResult {
+  totalValueLockedUSD: string
+  dailySnapshots: { dailySupplySideRevenueUSD: string }[]
 }
 
 export interface PoolMetrics {
-  /** Annualized fee yield (24h fees / TVL × 365), or null if unavailable. */
+  /** Annualized fee yield (last daily LP revenue / TVL × 365), or null if unavailable. */
   apy: number | null
-  /** USD-denominated TVL as of the subgraph's last indexed day, or null if unavailable. */
+  /** USD-denominated TVL, or null if unavailable. */
   tvlUSD: number | null
 }
 
 const NULL_METRICS: PoolMetrics = { apy: null, tvlUSD: null }
 
 /**
- * Best-effort 24h-fees / TVL read from the official Uniswap subgraph — one
- * query serves both the APY estimate and the USD TVL. Only chains with a
- * mapped `UNISWAP_V3_SUBGRAPH_ID` (currently Base mainnet — Base Sepolia has
- * no indexer serving one) return real data; this returns nulls rather than a
+ * Best-effort TVL + fee-yield read from a Messari-standard subgraph (the
+ * `liquidityPool` / `dailySnapshots` schema — NOT the original Uniswap Labs
+ * `pool` / `poolDayData` schema most docs show; verified live against the
+ * mapped Base subgraph before wiring this). Only chains with a mapped
+ * `UNISWAP_V3_SUBGRAPH_ID` (currently Base mainnet — Base Sepolia has no
+ * indexer serving one) return real data. TVL and APY are reported
+ * independently: a pool can have a real `totalValueLockedUSD` with no recent
+ * daily snapshot (apy stays null) — this returns nulls rather than a
  * fabricated number whenever the chain has no subgraph, the key is unset, the
- * endpoint is unreachable, or has no rows.
+ * endpoint is unreachable, or the pool has no rows there.
  */
 export async function fetchPoolMetrics(poolAddress: Address, chainId: number): Promise<PoolMetrics> {
   const subgraphId = UNISWAP_V3_SUBGRAPH_ID[chainId]
@@ -116,17 +120,18 @@ export async function fetchPoolMetrics(poolAddress: Address, chainId: number): P
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        query: `{ pool(id: "${poolAddress.toLowerCase()}") { poolDayData(first: 1, orderBy: date, orderDirection: desc) { feesUSD tvlUSD } } }`,
+        query: `{ liquidityPool(id: "${poolAddress.toLowerCase()}") { totalValueLockedUSD dailySnapshots(first: 1, orderBy: day, orderDirection: desc) { dailySupplySideRevenueUSD } } }`,
       }),
     })
     if (!res.ok) return NULL_METRICS
-    const json = (await res.json()) as { data?: { pool?: { poolDayData?: PoolDayData[] } } }
-    const day = json.data?.pool?.poolDayData?.[0]
-    if (!day) return NULL_METRICS
-    const tvlUSD = Number(day.tvlUSD)
-    const feesUSD = Number(day.feesUSD)
-    if (!Number.isFinite(tvlUSD) || tvlUSD <= 0 || !Number.isFinite(feesUSD)) return NULL_METRICS
-    return { apy: (feesUSD / tvlUSD) * 365, tvlUSD }
+    const json = (await res.json()) as { data?: { liquidityPool?: LiquidityPoolQueryResult } }
+    const lp = json.data?.liquidityPool
+    if (!lp) return NULL_METRICS
+    const tvlUSD = Number(lp.totalValueLockedUSD)
+    if (!Number.isFinite(tvlUSD) || tvlUSD <= 0) return NULL_METRICS
+    const dailyRevenueUSD = Number(lp.dailySnapshots?.[0]?.dailySupplySideRevenueUSD)
+    const apy = Number.isFinite(dailyRevenueUSD) && dailyRevenueUSD >= 0 ? (dailyRevenueUSD / tvlUSD) * 365 : null
+    return { apy, tvlUSD }
   } catch {
     return NULL_METRICS
   }
