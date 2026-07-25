@@ -70,17 +70,42 @@ This composes into a real system, not a single feature:
 - **A clear separation** — the treasury is the single source; the DCA safes are
   bounded envelopes; the agents are replaceable executors.
 
+## Critical: sign delegations under the FINAL owner set
+
+A Safe delegation is an EIP-1271 signature that the DelegationManager **re-checks at
+every redeem** against the Safe's *current* owners and threshold (verified in
+`Safe.checkNSignatures`, which reads `threshold` from storage and requires each
+signer to be a current owner). So **changing a Safe's owners or threshold after
+signing invalidates every delegation it signed** — a delegation signed while 1-of-1
+reverts (`GS020` / `GS026` → `InvalidERC1271Signature`) once the threshold is raised.
+
+What is and isn't sensitive to an owner change:
+
+| Action | Re-checked at redeem? | Consequence |
+|---|---|---|
+| Enable the DeleGator module | No — a one-shot on-chain tx (`enableModule`) | Can be done by a single signer; survives later owner changes |
+| **Sign a delegation** (periodic transfer, strategy mandate) | **Yes — EIP-1271 re-run every redeem** | **Must be signed under the final owner set**; a later owner change bricks it |
+
+**Rule:** put each safe in its final multisig configuration **before** signing any
+delegation from it. Installing the module first as 1-of-1 (simple, zero-fund, zero
+risk) is fine — just reach the final owner set before the delegation signatures.
+
 ## The operator flow
 
 1. **Set up the agent** — install the Hourglass agent skill; it creates the agent
    wallet and returns its address.
 2. **Create the DCA safe** — the DAO creates a new Safe (same owners as the
-   treasury) to hold this strategy's budget.
-3. **Sign Delegation 1** — from the treasury, a periodic-transfer delegation to the
-   DCA safe (the per-period budget, enforced on-chain).
-4. **Sign Delegation 2** — from the DCA safe, the strategy mandate to the agent
-   (the per-swap bounds).
-5. **Hand the recap to the agent** — the strategy context (target, amount, cadence)
+   treasury) for this strategy's budget. Enable the DeleGator module (a 1-of-1 setup
+   is fine here — it survives later owner changes), then bring the DCA safe to its
+   **final multisig owner set** before signing anything.
+3. **Sign Delegation 2** (from the DCA safe, now at its final owners) — the strategy
+   mandate to the agent (the per-swap bounds).
+4. **Sign Delegation 1** (from the treasury) — the periodic-transfer delegation to
+   the DCA safe (the per-period budget, enforced on-chain).
+5. **Fund the treasury path last** — with both delegations signed under their final
+   owner sets, let the periodic budget flow. Test the whole wiring at zero funds
+   first if you like; the budget only moves once Delegation 1 is live.
+6. **Hand the recap to the agent** — the strategy context (target, amount, cadence)
    the agent pairs with the mandates it discovers.
 
 ## Honest limits
