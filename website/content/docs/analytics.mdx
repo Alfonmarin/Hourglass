@@ -27,11 +27,16 @@ becomes a one-key filter (`WHERE contract_address = <our enforcer>`) with **no
 central list of delegation hashes**. This works precisely because the app is
 local-first.
 
-This now spans **both** payment shapes, so HourGlass maintains two self-deployed
+This now spans **both** payment shapes, so attribution rests on two self-deployed
 instances:
 
 - the `ERC20PeriodTransferEnforcer` for [subscriptions](/docs/concepts/subscriptions);
 - the `ERC20StreamingEnforcer` for [streams](/docs/concepts/streams).
+
+The rest of the enforcer suite is deployed under the same salt but emits nothing
+today, since no delegation references it yet. Adding a payment shape later means
+indexing one more emitter address, not a new deployment — the addresses are in
+[Deployments](/docs/deployments).
 
 The security implications of self-deploying audited bytecode are covered in
 [Security](/docs/security#self-deployed-enforcer-instances).
@@ -81,6 +86,13 @@ From these events, filtered to our enforcer instances:
   `eth_getLogs`, decodes them in the browser, and derives the metrics above. No
   backend, no subgraph, no `localStorage` dependency — it works because
   attribution is just the emitter address.
+- **Both chains are swept.** Ethereum mainnet and Base are scanned in parallel and
+  the results merged, each charge tagged with its chain. Because the enforcer
+  addresses are identical on both (same CREATE2 salt), one address filter serves
+  both — see [Deployments](/docs/deployments). Amounts are grouped by
+  *chain and token*, never summed across chains: the same symbol on two chains is
+  two different assets. If one chain's RPC fails, the page shows the other chain's
+  data and names the gap rather than presenting a partial total as complete.
 - **Scale path — a subgraph.** For larger histories, a subgraph keyed on the same
   events (plus `RedeemedDelegation` / `DisabledDelegation`) replaces the live scan
   behind the same UI. A Dune dashboard can decode the same events for sharing.

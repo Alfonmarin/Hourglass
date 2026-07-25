@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useAnalytics } from './useAnalytics';
-import { totals, byToken, byReceiver, byAgreement, chargesPerDay, type Group } from './aggregate';
+import { totals, byToken, byChain, byReceiver, byAgreement, chargesPerDay, type Group } from './aggregate';
 import { formatAmount, formatCount, shortHex } from './format';
+import { ANALYTICS_CHAINS } from './config';
 import type { TokenMeta } from './tokens';
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -16,32 +17,48 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-function tokenLabel(addr: string, tokens: Map<string, TokenMeta>): string {
-  return tokens.get(addr.toLowerCase())?.symbol ?? shortHex(addr);
+function chainName(chainId: number): string {
+  return ANALYTICS_CHAINS.find((c) => c.chain.id === chainId)?.name ?? `chain ${chainId}`;
 }
 
-function groupVolume(g: Group, tokens: Map<string, TokenMeta>): string {
-  const parts = [...g.volumeByToken.entries()].map(([t, total]) => {
-    const meta = tokens.get(t);
-    return `${formatAmount(total, meta?.decimals ?? 18)} ${meta?.symbol ?? shortHex(t)}`;
+/** `key` is the `chainId:address` token key used across the aggregates. */
+function tokenLabel(key: string, tokens: Map<string, TokenMeta>): string {
+  const meta = tokens.get(key);
+  if (meta) return meta.symbol;
+  return shortHex(key.slice(key.indexOf(':') + 1));
+}
+
+function groupVolume(g: Group | { volumeByToken: Map<string, bigint> }, tokens: Map<string, TokenMeta>): string {
+  const parts = [...g.volumeByToken.entries()].map(([key, total]) => {
+    const meta = tokens.get(key);
+    return `${formatAmount(total, meta?.decimals ?? 18)} ${tokenLabel(key, tokens)}`;
   });
   return parts.join(' · ');
 }
 
 export function AnalyticsDashboard() {
-  const { loading, error, charges, tokens, refresh } = useAnalytics();
+  const { loading, error, charges, failures, tokens, refresh } = useAnalytics();
+
+  const scanned = ANALYTICS_CHAINS.map((c) => c.name).join(' and ');
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Analytics</h1>
-        <p className="mt-1 text-sm text-fd-muted-foreground">
-          Live, read straight from the HourGlass enforcer instances on Ethereum — no backend.{' '}
+        <p className="mt-1 max-w-2xl text-sm text-fd-muted-foreground">
+          Live, read straight from the HourGlass enforcer instances on {scanned} — no backend.{' '}
           <Link
             href="/docs/analytics"
             className="rounded underline underline-offset-4 hover:text-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-line)]"
           >
             How attribution works
+          </Link>
+          {' · '}
+          <Link
+            href="/docs/deployments"
+            className="rounded underline underline-offset-4 hover:text-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-line)]"
+          >
+            Contract addresses per chain
           </Link>
           .
         </p>
@@ -53,6 +70,15 @@ export function AnalyticsDashboard() {
       >
         {loading ? 'Reading…' : 'Refresh'}
       </button>
+    </div>
+  );
+
+  // Partial data must not read as complete: name the chains that failed.
+  const failureNotice = failures.length > 0 && (
+    <div className="mt-6 rounded-xl border border-fd-border p-4 text-sm text-fd-muted-foreground">
+      Showing partial data — could not read{' '}
+      <span className="text-fd-foreground">{failures.map((f) => f.name).join(', ')}</span>
+      {failures[0]?.reason ? `: ${failures[0].reason}` : null}
     </div>
   );
 
@@ -70,15 +96,24 @@ export function AnalyticsDashboard() {
       <div className="mt-10 rounded-xl border border-fd-border p-6">
         <h2 className="text-base font-semibold">No attributable charges yet</h2>
         <p className="mt-2 max-w-xl text-sm text-fd-muted-foreground">
-          This view counts charges and claims routed to the HourGlass-deployed enforcer instances. Once
-          subscriptions and streams created through HourGlass are charged on-chain, their volume and counts —
-          broken down by agreement, receiver, and token — appear here automatically.
+          This view counts charges and claims routed to the HourGlass-deployed enforcer instances on {scanned}.
+          Once subscriptions and streams created through HourGlass are charged on-chain, their volume and counts —
+          broken down by chain, agreement, receiver, and token — appear here automatically. The instances are
+          listed in{' '}
+          <Link
+            href="/docs/deployments"
+            className="rounded underline underline-offset-4 hover:text-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-line)]"
+          >
+            Deployments
+          </Link>
+          .
         </p>
       </div>
     );
   } else {
     const t = totals(charges);
     const tokenRows = byToken(charges);
+    const chainRows = byChain(charges);
     const receivers = byReceiver(charges).slice(0, 10);
     const agreements = byAgreement(charges).slice(0, 10);
     const days = chargesPerDay(charges);
@@ -86,12 +121,37 @@ export function AnalyticsDashboard() {
 
     body = (
       <div className="mt-8 space-y-10">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <StatCard label="Charges" value={formatCount(t.charges)} sub={`${formatCount(t.subscriptionCharges)} subs · ${formatCount(t.streamClaims)} claims`} />
+          <StatCard label="Chains" value={formatCount(t.chains)} />
           <StatCard label="Agreements" value={formatCount(t.agreements)} />
           <StatCard label="Receivers" value={formatCount(t.receivers)} />
           <StatCard label="Tokens" value={formatCount(t.tokens)} />
         </div>
+
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-fd-muted-foreground">By chain</h2>
+          <div className="mt-3 overflow-hidden rounded-xl border border-fd-border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-fd-border text-left text-xs uppercase tracking-wide text-fd-muted-foreground">
+                  <th scope="col" className="px-4 py-2.5 font-medium">Chain</th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-medium">Volume</th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-medium">Charges</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chainRows.map((row) => (
+                  <tr key={row.chainId} className="border-b border-fd-border/60 last:border-0">
+                    <td className="px-4 py-2.5 font-medium">{chainName(row.chainId)}</td>
+                    <td className="px-4 py-2.5 text-right text-xs text-fd-muted-foreground">{groupVolume(row, tokens)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatCount(row.count)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <section>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-fd-muted-foreground">Volume by token</h2>
@@ -100,16 +160,18 @@ export function AnalyticsDashboard() {
               <thead>
                 <tr className="border-b border-fd-border text-left text-xs uppercase tracking-wide text-fd-muted-foreground">
                   <th scope="col" className="px-4 py-2.5 font-medium">Token</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Chain</th>
                   <th scope="col" className="px-4 py-2.5 text-right font-medium">Volume</th>
                   <th scope="col" className="px-4 py-2.5 text-right font-medium">Charges</th>
                 </tr>
               </thead>
               <tbody>
                 {tokenRows.map((row) => (
-                  <tr key={row.token} className="border-b border-fd-border/60 last:border-0">
-                    <td className="px-4 py-2.5 font-medium">{tokenLabel(row.token, tokens)}</td>
+                  <tr key={row.key} className="border-b border-fd-border/60 last:border-0">
+                    <td className="px-4 py-2.5 font-medium">{tokenLabel(row.key, tokens)}</td>
+                    <td className="px-4 py-2.5 text-xs text-fd-muted-foreground">{chainName(row.chainId)}</td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-                      {formatAmount(row.total, tokens.get(row.token)?.decimals ?? 18)}
+                      {formatAmount(row.total, tokens.get(row.key)?.decimals ?? 18)}
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums">{formatCount(row.count)}</td>
                   </tr>
@@ -149,6 +211,7 @@ export function AnalyticsDashboard() {
     <section className="relative mx-auto min-h-[calc(100vh-56px)] max-w-4xl px-6 py-16 md:px-8">
       <div className="stream-edge absolute left-0 top-0 h-full w-px" aria-hidden="true" />
       {header}
+      {failureNotice}
       {body}
     </section>
   );

@@ -1,17 +1,13 @@
 import { createPublicClient, http, parseAbiItem, type Address } from 'viem';
-import { mainnet } from 'viem/chains';
-import {
-  ANALYTICS_RPC_URL,
-  OURGLASS_ENFORCERS,
-  LOOKBACK_BLOCKS,
-  SCAN_CHUNK_BLOCKS,
-} from './config';
+import { ANALYTICS_CHAINS, HOURGLASS_ENFORCERS, type AnalyticsChain } from './config';
 
 type ChargeKind = 'subscription' | 'stream';
 
 /** One attributable charge (subscription) or claim (stream), normalized. */
 export interface Charge {
   kind: ChargeKind;
+  /** Chain the event was emitted on. Amounts are only comparable within a chain+token. */
+  chainId: number;
   delegationHash: string;
   token: Address;
   /** The receiver (delegate / payee) that redeemed. */
@@ -32,11 +28,10 @@ const STREAM_EVENT = parseAbiItem(
   'event IncreasedSpentMap(address indexed sender, address indexed redeemer, bytes32 indexed delegationHash, address token, uint256 initialAmount, uint256 maxAmount, uint256 amountPerSecond, uint256 startTime, uint256 spent, uint256 lastUpdateTimestamp)',
 );
 
-const client = createPublicClient({ chain: mainnet, transport: http(ANALYTICS_RPC_URL) });
-
 // Per-charge cumulative-counter rows, decoupled from viem's Log type so the delta
 // logic below is plain and testable.
 interface PeriodRow {
+  chainId: number;
   delegationHash: string;
   token: Address;
   redeemer: Address;
@@ -48,6 +43,7 @@ interface PeriodRow {
   txHash: string;
 }
 interface StreamRow {
+  chainId: number;
   delegationHash: string;
   token: Address;
   redeemer: Address;
@@ -66,23 +62,36 @@ interface StreamRow {
 async function paginate<T>(
   fromBlock: bigint,
   toBlock: bigint,
+  chunkBlocks: bigint,
   fetch: (from: bigint, to: bigint) => Promise<T[]>,
 ): Promise<T[]> {
   const out: T[] = [];
   let start = fromBlock;
-  let step = SCAN_CHUNK_BLOCKS;
+  let step = chunkBlocks;
   while (start <= toBlock) {
     const end = start + step - 1n > toBlock ? toBlock : start + step - 1n;
     try {
       out.push(...(await fetch(start, end)));
       start = end + 1n;
-      if (step < SCAN_CHUNK_BLOCKS) step = step * 2n > SCAN_CHUNK_BLOCKS ? SCAN_CHUNK_BLOCKS : step * 2n;
+      if (step < chunkBlocks) step = step * 2n > chunkBlocks ? chunkBlocks : step * 2n;
     } catch (err) {
       if (step <= 1n) throw err;
       step = step / 2n;
     }
   }
   return out;
+}
+
+/** Rows for one delegation must not mix chains — the counters are per-chain state. */
+function groupRows<T extends { chainId: number; delegationHash: string }>(rows: T[]): T[][] {
+  const map = new Map<string, T[]>();
+  for (const r of rows) {
+    const key = `${r.chainId}:${r.delegationHash}`;
+    const group = map.get(key) ?? [];
+    group.push(r);
+    map.set(key, group);
+  }
+  return [...map.values()];
 }
 
 /**
@@ -92,10 +101,8 @@ async function paginate<T>(
  * the prior period.
  */
 function periodCharges(rows: PeriodRow[]): Charge[] {
-  const byHash = new Map<string, PeriodRow[]>();
-  for (const r of rows) (byHash.get(r.delegationHash) ?? byHash.set(r.delegationHash, []).get(r.delegationHash)!).push(r);
   const charges: Charge[] = [];
-  for (const group of byHash.values()) {
+  for (const group of groupRows(rows)) {
     group.sort((a, b) => Number(a.ts - b.ts));
     let prevPeriod: bigint | null = null;
     let prevCumulative = 0n;
@@ -107,6 +114,7 @@ function periodCharges(rows: PeriodRow[]): Charge[] {
       prevCumulative = r.cumulative;
       charges.push({
         kind: 'subscription',
+        chainId: r.chainId,
         delegationHash: r.delegationHash,
         token: r.token,
         redeemer: r.redeemer,
@@ -122,10 +130,8 @@ function periodCharges(rows: PeriodRow[]): Charge[] {
 
 /** Stream claim = delta of lifetime-cumulative `spent` (monotonic, no reset). */
 function streamCharges(rows: StreamRow[]): Charge[] {
-  const byHash = new Map<string, StreamRow[]>();
-  for (const r of rows) (byHash.get(r.delegationHash) ?? byHash.set(r.delegationHash, []).get(r.delegationHash)!).push(r);
   const charges: Charge[] = [];
-  for (const group of byHash.values()) {
+  for (const group of groupRows(rows)) {
     group.sort((a, b) => Number(a.ts - b.ts));
     let prevSpent = 0n;
     for (const r of group) {
@@ -133,6 +139,7 @@ function streamCharges(rows: StreamRow[]): Charge[] {
       prevSpent = r.spent;
       charges.push({
         kind: 'stream',
+        chainId: r.chainId,
         delegationHash: r.delegationHash,
         token: r.token,
         redeemer: r.redeemer,
@@ -146,21 +153,23 @@ function streamCharges(rows: StreamRow[]): Charge[] {
   return charges;
 }
 
-/** Load all attributable charges + claims from the OurGlass enforcer instances. */
-export async function loadCharges(): Promise<Charge[]> {
+/** Sweep one chain's enforcer instances. */
+async function loadChainCharges({ chain, rpcUrl, lookbackBlocks, chunkBlocks }: AnalyticsChain): Promise<Charge[]> {
+  const client = createPublicClient({ chain, transport: http(rpcUrl) });
   const latest = await client.getBlockNumber();
-  const fromBlock = latest > LOOKBACK_BLOCKS ? latest - LOOKBACK_BLOCKS : 0n;
+  const fromBlock = latest > lookbackBlocks ? latest - lookbackBlocks : 0n;
 
   const [periodLogs, streamLogs] = await Promise.all([
-    paginate(fromBlock, latest, (from, to) =>
-      client.getLogs({ address: OURGLASS_ENFORCERS.period, event: PERIOD_EVENT, fromBlock: from, toBlock: to }),
+    paginate(fromBlock, latest, chunkBlocks, (from, to) =>
+      client.getLogs({ address: HOURGLASS_ENFORCERS.period, event: PERIOD_EVENT, fromBlock: from, toBlock: to }),
     ),
-    paginate(fromBlock, latest, (from, to) =>
-      client.getLogs({ address: OURGLASS_ENFORCERS.stream, event: STREAM_EVENT, fromBlock: from, toBlock: to }),
+    paginate(fromBlock, latest, chunkBlocks, (from, to) =>
+      client.getLogs({ address: HOURGLASS_ENFORCERS.stream, event: STREAM_EVENT, fromBlock: from, toBlock: to }),
     ),
   ]);
 
   const periodRows: PeriodRow[] = periodLogs.map((l) => ({
+    chainId: chain.id,
     delegationHash: l.args.delegationHash!,
     token: l.args.token!,
     redeemer: l.args.redeemer!,
@@ -172,6 +181,7 @@ export async function loadCharges(): Promise<Charge[]> {
     txHash: l.transactionHash,
   }));
   const streamRows: StreamRow[] = streamLogs.map((l) => ({
+    chainId: chain.id,
     delegationHash: l.args.delegationHash!,
     token: l.args.token!,
     redeemer: l.args.redeemer!,
@@ -181,5 +191,43 @@ export async function loadCharges(): Promise<Charge[]> {
     txHash: l.transactionHash,
   }));
 
-  return [...periodCharges(periodRows), ...streamCharges(streamRows)].sort((a, b) => a.timestamp - b.timestamp);
+  return [...periodCharges(periodRows), ...streamCharges(streamRows)];
+}
+
+/** A chain whose sweep failed, so the UI can say so instead of implying zero. */
+export interface ChainFailure {
+  name: string;
+  reason: string;
+}
+
+export interface ChargesResult {
+  charges: Charge[];
+  failures: ChainFailure[];
+}
+
+/**
+ * Load all attributable charges + claims from the HourGlass enforcer instances,
+ * across every configured chain.
+ *
+ * A chain that fails to respond is surfaced rather than silently dropped: a partial
+ * total that looks complete is worse than a visible gap.
+ */
+export async function loadCharges(): Promise<ChargesResult> {
+  const settled = await Promise.allSettled(ANALYTICS_CHAINS.map((c) => loadChainCharges(c)));
+
+  const charges: Charge[] = [];
+  const failures: ChainFailure[] = [];
+  settled.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      charges.push(...result.value);
+    } else {
+      const reason: unknown = result.reason;
+      failures.push({
+        name: ANALYTICS_CHAINS[i].name,
+        reason: reason instanceof Error ? reason.message : 'unreachable',
+      });
+    }
+  });
+
+  return { charges: charges.sort((a, b) => a.timestamp - b.timestamp), failures };
 }

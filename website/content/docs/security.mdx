@@ -76,9 +76,23 @@ different terms.
 
 ## Self-deployed enforcer instances
 
-For [analytics](/docs/analytics), HourGlass may route delegations to its **own
+For [analytics](/docs/analytics), HourGlass routes delegations to its **own
 deployed instances** of MetaMask's audited enforcers (unmodified bytecode, new
 address). This changes the emitter address of the caveat events but not the
 security logic. The integrity requirement: any such instance must be byte-identical
 to the audited release, and the deployed address is part of the signed caveat — so
 the signature covers it and it cannot be swapped after signing.
+
+The full enforcer suite — 37 instances — is deployed on Ethereum mainnet and Base
+under the CREATE2 salt `bytes32("OURGLASS")`, each with verified source on Etherscan
+and Basescan. Because the address derives from the salt and the bytecode alone, a
+given enforcer sits at the same address on both chains. Three of them carry the
+caveats HourGlass delegations actually use today; the rest exist so a future
+delegation shape needs no new deployment. Every address is listed in
+[Deployments](/docs/deployments), along with how to recompute it and check the
+bytecode yourself.
+
+Deploying an enforcer grants HourGlass no authority: enforcers hold no funds, are not
+whitelisted by the `DelegationManager`, and cannot be upgraded. A malicious instance
+would be a *different* address, and therefore a different signature — one you never
+signed.
