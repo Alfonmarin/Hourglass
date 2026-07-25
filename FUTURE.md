@@ -17,8 +17,10 @@ Deferred ideas captured during tasks (per workflow rules — scope discipline).
   **Impact today: none on testnet.** All three testnet predicates (`owns`,
   `in context of`, `delegate to`) are now reused by term_id, so the publish path
   never pins. What still needs the pin path:
-  - **mainnet**: its `delegate to` atom does not exist yet (verified: the label
-    returns no atoms), so the first mainnet publish must create it.
+  - **mainnet**: the `delegate to` atom now EXISTS (term_id
+    `0xc587d8f586380d2252d01784a3b6b889a50f960af80cc0d8acb4dbd3e2c2c1f5`,
+    verified against the live graph 2026-07-25 — the first mainnet publish created
+    it). The read path pins nothing; it matches this id directly.
   - **creating a brand-new Organization atom by name** (`pinOrganization`).
 
   **When the key arrives:** add the auth header to `createGraphqlPinner`
@@ -43,6 +45,25 @@ Deferred ideas captured during tasks (per workflow rules — scope discipline).
   singleton process, reorg/receipt-status handling, and a block-cursor decision:
   stateless rescan-window vs persisted cursor). Reintroduce if the "used but
   never reopened" case proves real. Design context in ADR 0005.
+
+- **[UX] Populate Overview from Intuition, keyed by the Safe (delegator).** Now
+  that signing no longer writes to `localStorage`, the Overview (`Home.tsx`, which
+  reads `getDelegations()`) shows nothing for a Safe whose delegations were signed
+  elsewhere. Since every mandate is discoverable on Intuition via the delegator,
+  the Overview should list the connected Safe's delegations read from the graph.
+  Source of truth: **Intuition only** (by the Safe) — consistent with dropping the
+  local store; it shows only published mandates, not unpublished drafts.
+
+  **Work:** the current discovery (`discoverIncomingDelegations`,
+  `src/lib/intuition/discover.ts`) traverses by the **agent** (recipient / delegate
+  atom → `delegate to` triples where it is the OBJECT). Overview needs the mirror:
+  a `discoverBySafe(safeModuleAddress, chainId)` that starts from the delegator
+  atom and finds `delegate to` triples where it is the **subject**, then the same
+  `in context of` → IPFS doc → `toStoredDelegation` tail. Add a hook
+  (`useSafeDelegations`) owning load/error state, and point `Home` at it instead of
+  `getDelegations()`. Note the delegator atom is the Safe's **module** address
+  (`delegation.delegator`), not the Safe address itself — resolve it the same way
+  the create flow predicts the module (factory `predictAddress`).
 
 - **[SECURITY] Unbounded token metadata (`symbol`/`name`/`decimals`) is a
   hostile input.** `readErc20Meta` (`src/lib/erc20.ts:43`) reads a custom

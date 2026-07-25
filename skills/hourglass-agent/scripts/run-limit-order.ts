@@ -71,7 +71,9 @@ const INTUITION: Record<'mainnet' | 'testnet', ReadConfig> = {
   },
   mainnet: {
     graphqlUrl: 'https://mainnet.intuition.sh/v1/graphql',
-    delegateTo: '0xb56980d42a3b03455bf41ea20fe04ae223fca0b9e688994dc661414e81e6433b',
+    // Mainnet "delegate to" is a distinct atom from testnet's — verified against the
+    // live graph (the testnet id 0xb569… returns zero triples on mainnet).
+    delegateTo: '0xc587d8f586380d2252d01784a3b6b889a50f960af80cc0d8acb4dbd3e2c2c1f5',
     inContextOf: '0x892054b01d389bfe566166120470f572a56e3d4cd88c599b52c4708949625390',
   },
 }
@@ -249,10 +251,12 @@ async function quoteSwap(apiKey: string, req: { swapper: Address; tokenIn: Addre
   const q = await apiPost<{ routing: string; quote: { output?: { amount?: string } } }>('/quote', apiKey, {
     swapper: req.swapper, tokenIn: req.tokenIn, tokenOut: req.tokenOut,
     tokenInChainId: String(req.chainId), tokenOutChainId: String(req.chainId),
-    amount: req.amount, type: 'EXACT_INPUT', slippageTolerance: 0.5, routingPreference: 'CLASSIC',
+    amount: req.amount, type: 'EXACT_INPUT', slippageTolerance: 0.5, routingPreference: 'BEST_PRICE',
   })
-  // A CLASSIC EXACT_INPUT quote reports the expected out under quote.output.amount
-  // (verified against the Uniswap Trading API /quote reference).
+  // routingPreference only accepts BEST_PRICE | FASTEST now (CLASSIC was deprecated as
+  // an INPUT); "CLASSIC" survives only as the response `routing` value, which the caller
+  // still checks to reject a non-redeemable UniswapX order. A CLASSIC EXACT_INPUT quote
+  // reports the expected out under quote.output.amount.
   const raw = q.quote?.output?.amount
   if (raw === undefined) throw new Error('Trading API quote: no output amount in response')
   return { routing: q.routing, quote: q.quote, output: BigInt(raw) }
