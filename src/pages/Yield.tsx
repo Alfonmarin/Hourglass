@@ -217,6 +217,8 @@ export default function Yield() {
           {pools.map((p) => {
             const active = pool?.poolAddress === p.poolAddress
             const isRecommended = p.poolAddress === recommended?.poolAddress
+            const share = poolValueShare(p)
+            const tvlUsd = p.tvlUSD ?? share?.usdEstimate ?? null
             return (
               <Card
                 key={p.poolAddress}
@@ -243,28 +245,29 @@ export default function Yield() {
                 </div>
                 <div className="shrink-0 w-[220px]">
                   <div className="text-center font-mono text-sm font-bold text-ink tnum">
-                    TVL{p.tvlUSD !== null ? `: ${usdCompact.format(p.tvlUSD)}` : ': insufficient data'}
+                    TVL:{' '}
+                    {p.tvlUSD !== null
+                      ? usdCompact.format(p.tvlUSD)
+                      : tvlUsd !== null
+                        ? `~${usdCompact.format(tvlUsd)}`
+                        : 'insufficient data'}
                   </div>
-                  {(() => {
-                    const share = poolValueShare(p)
-                    if (!share) return null
-                    return (
-                      <>
-                        <div className="h-1.5 rounded-full overflow-hidden flex bg-line mt-2">
-                          <div className="h-full" style={{ width: `${share.pct0 * 100}%`, background: 'var(--accent)' }} />
-                          <div className="h-full bg-line2" style={{ width: `${share.pct1 * 100}%` }} />
-                        </div>
-                        <div className="flex justify-between mt-1.5 text-[11px] text-faint">
-                          <span>
-                            {p.token0.symbol} <span className="text-ink font-semibold">{(share.pct0 * 100).toFixed(0)}%</span>
-                          </span>
-                          <span>
-                            {p.token1.symbol} <span className="text-ink font-semibold">{(share.pct1 * 100).toFixed(0)}%</span>
-                          </span>
-                        </div>
-                      </>
-                    )
-                  })()}
+                  {share && (
+                    <>
+                      <div className="h-1.5 rounded-full overflow-hidden flex bg-line mt-2">
+                        <div className="h-full" style={{ width: `${share.pct0 * 100}%`, background: 'var(--accent)' }} />
+                        <div className="h-full bg-line2" style={{ width: `${share.pct1 * 100}%` }} />
+                      </div>
+                      <div className="flex justify-between mt-1.5 text-[11px] text-faint">
+                        <span>
+                          {p.token0.symbol} <span className="text-ink font-semibold">{(share.pct0 * 100).toFixed(0)}%</span>
+                        </span>
+                        <span>
+                          {p.token1.symbol} <span className="text-ink font-semibold">{(share.pct1 * 100).toFixed(0)}%</span>
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-mono text-sm text-ink tnum">{p.apy !== null ? `${(p.apy * 100).toFixed(1)}% APY` : 'insufficient data'}</div>

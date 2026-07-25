@@ -78,6 +78,23 @@ export async function discoverPools(client: PublicClient, chainId: number): Prom
   return found
 }
 
+// The only stablecoin the app's candidate-token list currently includes. Its
+// balance can stand in for its USD value without an external price feed —
+// this is an approximation (assumes the peg holds), not an oracle-verified figure.
+const STABLECOIN_SYMBOLS = new Set(['USDC'])
+
+export interface PoolValueShare {
+  pct0: number
+  pct1: number
+  /**
+   * The whole pool's value in USD, estimated by pricing the non-stable side
+   * off the pool's own rate and using the stablecoin side's balance as its $
+   * value. Null when neither token0 nor token1 is a recognized stablecoin —
+   * there's then no $ anchor to convert through.
+   */
+  usdEstimate: number | null
+}
+
 /**
  * Each token's share of the pool's value, derived only from the pool's own
  * on-chain price (`sqrtPriceX96`) and reserves — no USD price feed needed, so
@@ -88,16 +105,21 @@ export async function discoverPools(client: PublicClient, chainId: number): Prom
  * financial calculation. Null only if the pool has no price or no balance to
  * compare (shouldn't happen for a pool with liquidity > 0).
  */
-export function poolValueShare(pool: PoolInfo): { pct0: number; pct1: number } | null {
+export function poolValueShare(pool: PoolInfo): PoolValueShare | null {
   const sqrtPrice = Number(pool.sqrtPriceX96) / 2 ** 96
   const priceOf0In1 = sqrtPrice * sqrtPrice * 10 ** (pool.token0.decimals - pool.token1.decimals)
   const amount0 = Number(formatUnits(pool.tvlToken0, pool.token0.decimals))
   const amount1 = Number(formatUnits(pool.tvlToken1, pool.token1.decimals))
   const value0In1 = amount0 * priceOf0In1
-  const total = value0In1 + amount1
-  if (!Number.isFinite(total) || total <= 0) return null
-  const pct0 = value0In1 / total
-  return { pct0, pct1: 1 - pct0 }
+  const totalInToken1 = value0In1 + amount1
+  if (!Number.isFinite(totalInToken1) || totalInToken1 <= 0) return null
+  const pct0 = value0In1 / totalInToken1
+
+  let usdEstimate: number | null = null
+  if (STABLECOIN_SYMBOLS.has(pool.token1.symbol)) usdEstimate = totalInToken1
+  else if (STABLECOIN_SYMBOLS.has(pool.token0.symbol)) usdEstimate = amount0 + amount1 / priceOf0In1
+
+  return { pct0, pct1: 1 - pct0, usdEstimate }
 }
 
 interface LiquidityPoolQueryResult {
