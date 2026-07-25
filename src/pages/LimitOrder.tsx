@@ -105,16 +105,16 @@ export default function LimitOrder() {
         args: [safe.safeAddress as Address, DEFAULT_SALT],
       })) as Address
 
-      const mandate = buildLimitOrderMandate({
+      const { approve, swap } = buildLimitOrderMandate({
         moduleAddress,
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
         swapRouter: router,
-        // The balance-change bounds must watch the account whose balance actually
-        // moves. The module executes via safe.execTransactionFromModule, so the swap
-        // runs with msg.sender == the Safe: the Safe spends the funding token and
-        // receives the bought token. Watching the module (which holds nothing) makes
-        // the Increase bound see no gain → ERC20BalanceChangeEnforcer reverts.
+        // The balance-change bounds watch the Safe, not the module: the module
+        // executes via safe.execTransactionFromModule, so the swap runs with
+        // msg.sender == the Safe — the Safe spends the funding token and receives
+        // the bought token. Watching the module (which holds nothing) makes the
+        // Increase bound see no gain → ERC20BalanceChangeEnforcer reverts.
         recipient: safe.safeAddress as Address,
         fundingToken: fundingAddress as Address,
         targetToken: targetToken as Address,
@@ -122,30 +122,58 @@ export default function LimitOrder() {
         minReceived: minReceivedRaw,
       })
 
+      // Two signatures: the approve grant, then the price-bounded swap grant. The
+      // agent redeems both in one call, so both must be signed and published.
       setStep('signing')
-      const typedData = buildDelegationTypedData(mandate, safe.chainId)
-      const result = (await sdk.txs.signTypedMessage(typedData as never)) as { signature?: Hex; safeTxHash?: Hex }
-      const signed = { ...mandate, signature: (result?.signature || result?.safeTxHash || '0x') as Hex }
+      const approveTyped = buildDelegationTypedData(approve, safe.chainId)
+      const approveRes = (await sdk.txs.signTypedMessage(approveTyped as never)) as { signature?: Hex; safeTxHash?: Hex }
+      const approveSigned = { ...approve, signature: (approveRes?.signature || approveRes?.safeTxHash || '0x') as Hex }
 
+      const swapTyped = buildDelegationTypedData(swap, safe.chainId)
+      const swapRes = (await sdk.txs.signTypedMessage(swapTyped as never)) as { signature?: Hex; safeTxHash?: Hex }
+      const swapSigned = { ...swap, signature: (swapRes?.signature || swapRes?.safeTxHash || '0x') as Hex }
+
+      const approveHash = computeDelegationHash(approveSigned)
+      const swapHash = computeDelegationHash(swapSigned)
+
+      const common = {
+        createdAt: new Date().toISOString(),
+        chainId: safe.chainId,
+        safeAddress: safe.safeAddress as Address,
+        moduleAddress,
+        status: 'signed' as const,
+        recipient: agent as Address,
+        strategyKind: 'limitOrder' as const,
+        tokenAddress: fundingAddress as Address,
+        targetToken: targetToken as Address,
+      }
+
+      // The swap is the strategy carrier (spend cap + price trigger + one-shot); the
+      // approve is its companion, paired by delegationHash so discovery reunites them.
       saveDelegation({
-        delegation: signed,
+        delegation: swapSigned,
         meta: {
+          ...common,
           label: 'Limit order',
           scopeType: 'strategyMandate',
-          createdAt: new Date().toISOString(),
-          chainId: safe.chainId,
-          safeAddress: safe.safeAddress as Address,
-          moduleAddress,
-          status: 'signed',
-          delegationHash: computeDelegationHash(signed),
-          safeMessageHash: result?.safeTxHash,
-          recipient: agent as Address,
-          strategyKind: 'limitOrder',
-          tokenAddress: fundingAddress as Address,
-          targetToken: targetToken as Address,
+          delegationHash: swapHash,
+          safeMessageHash: swapRes?.safeTxHash,
           amount: spend,
           capPerSwap: spend,
           enforceDecrease: true,
+          pairedApproveHash: approveHash,
+        },
+      })
+      saveDelegation({
+        delegation: approveSigned,
+        meta: {
+          ...common,
+          label: 'Limit order approve',
+          scopeType: 'strategyMandate',
+          delegationHash: approveHash,
+          safeMessageHash: approveRes?.safeTxHash,
+          amount: spend,
+          pairedSwapHash: swapHash,
         },
       })
 
@@ -154,7 +182,8 @@ export default function LimitOrder() {
         chainId: safe.chainId,
         safe: safe.safeAddress,
         agent,
-        delegationHash: computeDelegationHash(signed),
+        swapDelegationHash: swapHash,
+        approveDelegationHash: approveHash,
         fundingToken: fundingAddress,
         targetToken,
         maxSpend: spend,

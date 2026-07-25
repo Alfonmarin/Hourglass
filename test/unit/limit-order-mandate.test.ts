@@ -35,29 +35,38 @@ function order() {
 }
 
 describe('buildLimitOrderMandate', () => {
-  test('delegate/delegator/unsigned are set', () => {
-    const m = order()
-    expect(getAddress(m.delegate)).toBe(AGENT)
-    expect(getAddress(m.delegator)).toBe(MODULE)
-    expect(m.signature).toBe('0x')
-    expect(m.salt).not.toBe('0x')
+  test('returns a pair: both unsigned, both to the agent from the module', () => {
+    const { approve, swap } = order()
+    for (const d of [approve, swap]) {
+      expect(getAddress(d.delegate)).toBe(AGENT)
+      expect(getAddress(d.delegator)).toBe(MODULE)
+      expect(d.signature).toBe('0x')
+      expect(d.salt).not.toBe('0x')
+    }
+    // Distinct delegations (distinct salts) so each has its own delegationHash.
+    expect(approve.salt).not.toBe(swap.salt)
   })
 
-  test('carries two balance-change bounds + a limitedCalls cap', () => {
-    const m = order()
-    // The whole mandate routes through the HourGlass enforcer instances (see
-    // environment.ts) so every caveat is attributable to HourGlass.
+  test('the swap carries two balance-change bounds + a limitedCalls cap', () => {
+    const { swap } = order()
+    // Every caveat routes through the HourGlass enforcer instances (environment.ts).
     const bcEnforcer = getAddress(getAddresses(CHAIN).hourglass!.erc20BalanceChangeEnforcer)
     const limitedEnforcer = getAddress(getAddresses(CHAIN).hourglass!.limitedCallsEnforcer)
-    const balanceChanges = m.caveats.filter((c) => getAddress(c.enforcer) === bcEnforcer)
-    const limited = m.caveats.filter((c) => getAddress(c.enforcer) === limitedEnforcer)
+    const balanceChanges = swap.caveats.filter((c) => getAddress(c.enforcer) === bcEnforcer)
+    const limited = swap.caveats.filter((c) => getAddress(c.enforcer) === limitedEnforcer)
     expect(balanceChanges).toHaveLength(2)
     expect(limited).toHaveLength(1)
   })
 
-  test('the max-spend (Decrease) bound round-trips to the funding token', () => {
-    const m = order()
-    const found = findBalanceChangeCaveat(m, CHAIN)!
+  test('the approve carries NO balance-change bound (only the swap does)', () => {
+    const { approve } = order()
+    const bcEnforcer = getAddress(getAddresses(CHAIN).hourglass!.erc20BalanceChangeEnforcer)
+    expect(approve.caveats.filter((c) => getAddress(c.enforcer) === bcEnforcer)).toHaveLength(0)
+  })
+
+  test('the swap max-spend (Decrease) bound round-trips to the funding token', () => {
+    const { swap } = order()
+    const found = findBalanceChangeCaveat(swap, CHAIN)!
     const t = decodeBalanceChangeTerms(found.terms)
     expect(t.enforceDecrease).toBe(true)
     expect(getAddress(t.token)).toBe(USDC)
