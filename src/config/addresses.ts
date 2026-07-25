@@ -8,6 +8,10 @@ export interface ChainAddresses {
   nativeTokenTransferAmountEnforcer: Address
   erc20TransferAmountEnforcer: Address
   erc20MultiOperationIncreaseBalanceEnforcer: Address
+  // Bounds a token's balance delta (before/after a redemption) rather than the
+  // calldata — the only enforcer that can cap a dynamically-routed swap. Powers
+  // the strategy rail (DCA / range / index). See docs/HOURGLASS_STRATEGIES.md.
+  erc20BalanceChangeEnforcer: Address
   valueLteEnforcer: Address
   timestampEnforcer: Address
   allowedTargetsEnforcer: Address
@@ -41,6 +45,7 @@ const SHARED_ENFORCERS = {
   nativeTokenTransferAmountEnforcer: '0xF71af580b9c3078fbc2BBF16FbB8EEd82b330320' as Address,
   erc20TransferAmountEnforcer: '0xf100b0819427117EcF76Ed94B358B1A5b5C6D2Fc' as Address,
   erc20MultiOperationIncreaseBalanceEnforcer: '0xeaA1bE91F0ea417820a765df9C5BE542286BFfDC' as Address,
+  erc20BalanceChangeEnforcer: '0xcdF6aB796408598Cea671d79506d7D48E97a5437' as Address,
   valueLteEnforcer: '0x92Bf12322527cAA612fd31a0e810472BBB106A8F' as Address,
   timestampEnforcer: '0x1046bb45C8d673d4ea75321280DB34899413c069' as Address,
   allowedTargetsEnforcer: '0x7F20f61b1f09b08D970938F6fa563634d65c4EeB' as Address,
