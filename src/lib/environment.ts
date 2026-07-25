@@ -12,20 +12,20 @@ import { addresses } from '../config/addresses'
  * analytics marker; see spec/plan-analytics.md and
  * spec/ourglass-enforcer-instances.md).
  *
- * Chains without an `ourglass` block fall through to the canonical SDK addresses.
+ * Chains without an `hourglass` block fall through to the canonical SDK addresses.
  */
 export function getEnvironment(chainId: number) {
   const env = getSmartAccountsEnvironment(chainId)
-  const ourglass = addresses[chainId]?.ourglass
-  if (!ourglass) return env
+  const hourglass = addresses[chainId]?.hourglass
+  if (!hourglass) return env
 
   return {
     ...env,
     caveatEnforcers: {
       ...env.caveatEnforcers,
-      ERC20PeriodTransferEnforcer: ourglass.erc20PeriodTransferEnforcer,
-      TimestampEnforcer: ourglass.timestampEnforcer,
-      ERC20StreamingEnforcer: ourglass.erc20StreamingEnforcer,
+      ERC20PeriodTransferEnforcer: hourglass.erc20PeriodTransferEnforcer,
+      TimestampEnforcer: hourglass.timestampEnforcer,
+      ERC20StreamingEnforcer: hourglass.erc20StreamingEnforcer,
     },
   }
 }

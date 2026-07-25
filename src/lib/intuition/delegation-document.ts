@@ -8,7 +8,7 @@ import { SYMBOL_MAX_CHARS } from '../token-meta'
  * atomic signed delegation under `delegation`. Relationship semantics live in the
  * triples; the Thing fields are display-only. See ADR 0004.
  *
- * The title is intentionally generic ("OurGlass delegation"); the human-readable
+ * The title is intentionally generic ("Hourglass delegation"); the human-readable
  * specifics (kind, enforcer, amount/period) go in the description, composed from
  * the delegation details the caller already has at signing time. The on-chain
  * caveat remains the source of truth — the description is display.
@@ -37,7 +37,7 @@ export interface DelegationDetails {
 }
 
 /** The canonical atom title. Intentionally generic — no amount/period. */
-export const DELEGATION_DOCUMENT_NAME = 'OurGlass delegation'
+export const DELEGATION_DOCUMENT_NAME = 'Hourglass delegation'
 
 const DEFAULT_URL = 'https://hourglass.box/'
 
