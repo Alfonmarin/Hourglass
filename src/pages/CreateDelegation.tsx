@@ -27,6 +27,7 @@ import { IconCube, IconLock, IconCheck, IconExt, IconHash } from '../ui/icons'
 import { findChain, rpcUrl, chainName } from '../config/supported-chains'
 import { readErc20Meta } from '../lib/erc20'
 import { useSafeTokens } from '../hooks/useSafeTokens'
+import { useSafeBalance } from '../hooks/useSafeBalance'
 import type { HeldToken } from '../lib/safe-balances'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -153,6 +154,15 @@ export default function CreateDelegation() {
   const tokenValid = useCustomToken
     ? (isAddress(customToken) && tokenStatus === 'ok')
     : (!!selectedToken && isAddress(selectedToken.address))
+
+  // Solvency: the Safe's balance of the chosen token. Whitelist mode already read
+  // it (selectedToken.balance); custom mode reads it on demand.
+  const customBalance = useSafeBalance(
+    safe.safeAddress as Address,
+    safe.chainId,
+    useCustomToken && tokenValid ? customToken : undefined,
+  )
+  const safeBalance = useCustomToken ? customBalance.balance : (selectedToken?.balance ?? null)
   const periodSeconds = Number(periodToSeconds(period))
 
   const fmt = (raw: bigint) => trimAmount(formatUnits(raw, decimals))
@@ -160,6 +170,11 @@ export default function CreateDelegation() {
     try { return amount ? parseUnits(amount, decimals) : 0n } catch { return 0n }
   }, [amount, decimals])
   const amountValid = amountRaw > 0n && tokenValid
+
+  // How many full periods the Safe's current balance covers at this per-period cap.
+  // Advisory only — the subscriber can top up the Safe later, so this never blocks.
+  const periodsCovered = safeBalance !== null && amountRaw > 0n ? safeBalance / amountRaw : null
+  const underfunded = periodsCovered !== null && periodsCovered < 1n
 
   // ---- Hard-cap table (pivot = capDurationSeconds). Budget = amount × periods. ----
   const capDurationSeconds = useMemo(() => {
@@ -565,6 +580,14 @@ export default function CreateDelegation() {
               <div className="font-mono font-bold text-ink tnum mt-0.5" style={{ fontSize: 20 }}>{trimAmount(amount)} <span className="text-dim text-sm font-semibold">{tokenSymbol} / {periodNoun(period)}</span></div>
             ) : (
               <div className={`text-sm font-semibold mt-0.5 ${errs.amount ? 'text-danger' : 'text-faint'}`}>{errs.amount ? 'amount required' : 'set a charge amount'}</div>
+            )}
+            {amountValid && safeBalance !== null && (
+              <div className={`text-[11px] mt-1.5 ${underfunded ? 'text-pending' : 'text-faint'}`}>
+                Safe holds {fmt(safeBalance)} {tokenSymbol}
+                {underfunded
+                  ? " — doesn't cover one period yet"
+                  : periodsCovered !== null && ` — covers ${periodsCovered} ${periodNoun(period)}${periodsCovered === 1n ? '' : 's'}`}
+              </div>
             )}
           </div>
 
