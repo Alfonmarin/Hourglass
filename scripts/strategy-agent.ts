@@ -20,7 +20,11 @@ import type { StoredDelegation } from '../src/lib/storage'
  * capped by the mandate's erc20BalanceChange. Env: AGENT_PRIVATE_KEY (the
  * delegate), UNISWAP_API_KEY (Trading API), optional RPC_URL. Never commit these.
  *
- * Usage: bun scripts/strategy-agent.ts <chainId> <tokenOut> <amountIn>
+ * The DCA intent (target token, amount, cadence) is read from the discovered
+ * mandate's metadata — the agent follows the instruction the Safe signed. The
+ * on-chain cap bounds it regardless.
+ *
+ * Usage: bun scripts/strategy-agent.ts <chainId>
  */
 
 const chains: Record<number, typeof baseSepolia | typeof base | typeof sepolia> = {
@@ -94,15 +98,14 @@ async function executeSwap(params: {
 }
 
 async function main() {
-  const [chainArg, tokenOut, amountArg] = process.argv.slice(2)
-  if (!chainArg || !tokenOut || !amountArg) {
-    console.error('usage: bun scripts/strategy-agent.ts <chainId> <tokenOut> <amountIn>')
+  const [chainArg] = process.argv.slice(2)
+  if (!chainArg) {
+    console.error('usage: bun scripts/strategy-agent.ts <chainId>')
     process.exit(1)
   }
   const chainId = Number(chainArg)
   const chain = chains[chainId]
   if (!chain) throw new Error(`Unsupported chain: ${chainId}`)
-  if (!isAddress(tokenOut)) throw new Error(`invalid tokenOut: ${tokenOut}`)
 
   const privateKey = requireEnv('AGENT_PRIVATE_KEY') as Hex
   const apiKey = requireEnv('UNISWAP_API_KEY')
@@ -125,15 +128,21 @@ async function main() {
       console.log(`Skipping ${mandate.meta.delegationHash} — delegate is not this agent.`)
       continue
     }
+    // The DCA intent lives in the mandate metadata (agent instruction).
     const tokenIn = mandate.meta.tokenAddress
-    if (!tokenIn) { console.log(`Skipping ${mandate.meta.delegationHash} — no funding token.`); continue }
+    const tokenOut = mandate.meta.targetToken
+    const buyAmount = mandate.meta.amount
+    if (!tokenIn || !tokenOut || !buyAmount || !isAddress(tokenOut)) {
+      console.log(`Skipping ${mandate.meta.delegationHash} — incomplete DCA intent.`)
+      continue
+    }
 
-    // Layer 2 — decide. The tick amount in the funding token's units; the on-chain
+    // Layer 2 — decide. The buy amount in the funding token's units; the on-chain
     // erc20BalanceChange cap enforces the per-swap ceiling regardless.
     const decimals = await publicClient.readContract({ address: tokenIn, abi: erc20Abi, functionName: 'decimals' })
-    const amountIn = parseUnits(amountArg, decimals)
+    const amountIn = parseUnits(buyAmount, decimals)
 
-    console.log(`Mandate ${mandate.meta.delegationHash}: swapping ${amountArg} of ${tokenIn} → ${tokenOut}`)
+    console.log(`Mandate ${mandate.meta.delegationHash}: buying ${buyAmount} ${tokenIn} → ${tokenOut} (${mandate.meta.period ?? 'once'})`)
     try {
       const hash = await executeSwap({
         walletClient, publicClient, delegationManager,

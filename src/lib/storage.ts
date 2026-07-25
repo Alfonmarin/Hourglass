@@ -57,6 +57,10 @@ export interface StoredDelegation {
     // bounded by a per-swap loss cap. `strategyKind` names the variant (dca,
     // range, …) so the catalogue can grow without new scopeTypes.
     strategyKind?: 'dca' | 'range'
+    // The token the agent buys with the funding token (the swap output). The DCA
+    // intent (amount/period) lives in `amount`/`period` above — an agent
+    // instruction, NOT an on-chain guarantee. Only `capPerSwap` is enforced.
+    targetToken?: Address
     // Human per-swap spend cap (formatted with the token's decimals), e.g. "55".
     capPerSwap?: string
     // true = the cap bounds a DECREASE (spend) of the token; the enforced direction.
