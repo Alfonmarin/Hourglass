@@ -178,6 +178,15 @@ complete English PR.
    quote ever returns UniswapX, the runner must reject it (the caveat can't bound a
    gasless order). Document this as a hard runner invariant.
 
+## Deliberate scope note — standalone redeem is not extended
+
+`website/src/redeem/` (the "Charge a subscription" standalone page) is where a
+**human payee** encashes a subscription/stream from their own wallet. A strategy
+mandate has no human payee — it is consumed by the **agent** (`scripts/`), not that
+page. So the DCA caveat decoders live only in `src/lib/intuition/discover.ts`, not
+in the website copy. This is a choice, not an omission: extending the standalone
+would add surface with no consumer.
+
 ## Critical invariants (do not violate)
 
 - Force **CLASSIC** routing — a UniswapX order is unbounded by our caveat.

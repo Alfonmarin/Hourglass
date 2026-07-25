@@ -265,6 +265,24 @@ async function toStoredDelegation(
     }
   }
 
+  const mandate = findBalanceChangeCaveat(delegation, chainId)
+  if (mandate) {
+    const { token, amount, enforceDecrease } = decodeBalanceChangeTerms(mandate.terms)
+    const decimals = await tokenDecimals(chainId, token)
+    return {
+      delegation,
+      meta: {
+        ...common,
+        scopeType: 'strategyMandate',
+        status: 'signed',
+        strategyKind: 'dca',
+        tokenAddress: token,
+        capPerSwap: formatUnits(amount, decimals),
+        enforceDecrease,
+      },
+    }
+  }
+
   return null
 }
 
