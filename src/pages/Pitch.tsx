@@ -179,12 +179,12 @@ function SlideDemo() {
     <div className="text-center">
       <Kicker>Live demo</Kicker>
       <a
-        href="https://ourglass.intuition.box/"
+        href="https://hourglass.box/"
         target="_blank"
         rel="noreferrer"
         className="mt-6 inline-flex items-center gap-3 text-3xl md:text-5xl font-extrabold tracking-tight text-ink hover:opacity-90 transition"
       >
-        ourglass.intuition.box
+        hourglass.box
         <IconExt size={28} style={{ color: 'var(--accent)' }} />
       </a>
       <ol className="mt-12 inline-flex flex-col items-start gap-4 text-left">
@@ -285,7 +285,7 @@ function SlidePositioning() {
       <div className="mt-10 grid grid-cols-2 max-w-3xl">
         <div className="pb-3 pr-6 text-sm font-bold tracking-wide uppercase text-dim">Sablier</div>
         <div className="pb-3 text-sm font-bold tracking-wide uppercase" style={{ color: 'var(--accent)' }}>
-          OurGlass
+          HourGlass
         </div>
         <Compare left="Continuous streams, by the second" right="Discrete charges, per agreed period" />
         <Compare left="Funds deposited into the stream up front" right="Funds stay in the treasury — no escrow" />
@@ -293,7 +293,7 @@ function SlidePositioning() {
         <Compare left="A stream is an NFT" right="An agreement is signed terms, pinned to IPFS" />
       </div>
       <p className="mt-10 text-lg text-ink font-medium">
-        Sablier melts money through time. <span style={{ color: 'var(--accent)' }}>OurGlass lets you take what's yours, on time.</span>
+        Sablier melts money through time. <span style={{ color: 'var(--accent)' }}>HourGlass lets you take what's yours, on time.</span>
       </p>
     </div>
   )
@@ -403,12 +403,12 @@ function SlideClose() {
       </h2>
       <div className="mt-10 flex flex-col md:flex-row items-center gap-3 md:gap-8">
         <a
-          href="https://ourglass.intuition.box/"
+          href="https://hourglass.box/"
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-2 text-sm text-dim hover:text-ink transition"
         >
-          <IconExt size={14} /> ourglass.intuition.box
+          <IconExt size={14} /> hourglass.box
         </a>
         <a
           href="https://github.com/intuition-box/OurGlass"
@@ -487,7 +487,7 @@ export default function Pitch() {
       </main>
 
       <footer className="flex items-center justify-between px-8 md:px-20 pb-6 max-w-6xl w-full mx-auto">
-        <div className="text-[11px] text-faint tracking-wide">OurGlass — Design for Builders</div>
+        <div className="text-[11px] text-faint tracking-wide">HourGlass — Design for Builders</div>
         <div className="flex items-center gap-1.5" role="tablist" aria-label="Slides">
           {SLIDES.map((s, i) => (
             <button

@@ -28,7 +28,7 @@ export interface StreamTerms {
 }
 
 export interface StreamAgreementDocument {
-  schema: 'ourglass/stream-agreement@1'
+  schema: 'hourglass/stream-agreement@1'
   id: string
   createdAt: string
   chainId: number
@@ -78,7 +78,7 @@ export function buildStreamAgreement(params: {
   createdAt?: string
 }): StreamAgreementDocument {
   return {
-    schema: 'ourglass/stream-agreement@1',
+    schema: 'hourglass/stream-agreement@1',
     id: params.id,
     createdAt: params.createdAt ?? new Date().toISOString(),
     chainId: params.chainId,

@@ -47,7 +47,7 @@ export default function Verify() {
       <div className="max-w-[760px] mx-auto px-5 py-10">
         <header className="flex items-center justify-between gap-4 mb-10">
           <Logo />
-          <a href="/" className="text-xs text-dim hover:text-ink transition">ourglass.intuition.box</a>
+          <a href="/" className="text-xs text-dim hover:text-ink transition">hourglass.box</a>
         </header>
 
         <div className="flex items-center gap-2.5 text-[color:var(--accent)] mb-3">
@@ -55,7 +55,7 @@ export default function Verify() {
           <span className="text-xs font-semibold uppercase tracking-wide">Provenance &amp; verification</span>
         </div>
         <h1 className="text-3xl font-extrabold tracking-tight text-ink leading-tight">
-          OurGlass deploys no custom contracts.
+          HourGlass deploys no custom contracts.
         </h1>
         <p className="text-dim text-[15px] leading-relaxed mt-4">
           Every subscription runs entirely on the{' '}
@@ -139,7 +139,7 @@ export default function Verify() {
         </Card>
 
         <div className="mt-12 pt-6 border-t border-line">
-          <div className="text-xs font-semibold uppercase tracking-wide text-faint mb-2 flex items-center gap-2"><IconCube size={13} /> What OurGlass itself adds</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-faint mb-2 flex items-center gap-2"><IconCube size={13} /> What HourGlass itself adds</div>
           <p className="text-sm text-dim leading-relaxed">
             Only an interface and an IPFS-pinned, human-readable copy of each agreement. No custom contract, no
             upgradeable proxy, and no admin key that can move your funds. The on-chain authority is the audited

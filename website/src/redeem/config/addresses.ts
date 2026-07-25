@@ -23,7 +23,7 @@ export interface ChainAddresses {
   // The period enforcer doubles as the on-chain analytics marker — its
   // TransferredInPeriod events are attributable to OurGlass by emitter address
   // (see spec/plan-analytics.md and spec/ourglass-enforcer-instances.md).
-  ourglass?: {
+  hourglass?: {
     erc20PeriodTransferEnforcer: Address
     timestampEnforcer: Address
     erc20StreamingEnforcer: Address
@@ -83,7 +83,7 @@ export const addresses: Record<number, ChainAddresses> = {
     delegationManager: DELEGATION_MANAGER,
     delegatorModuleFactory: '0xbDDE43bCf6Db9DBeB1127E6574CCF70BFb1c2DC3' as Address,
     ...SHARED_ENFORCERS,
-    ourglass: {
+    hourglass: {
       erc20PeriodTransferEnforcer: '0x11262E3116a50654547AB0A417BE77eB14b9F339' as Address,
       timestampEnforcer: '0xF1635460548F44543366ec4453D512a7Ce85Af85' as Address,
       erc20StreamingEnforcer: '0xE475D14d61756D6e940B74C20d2E44EB70c71a8D' as Address,

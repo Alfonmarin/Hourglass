@@ -33,7 +33,7 @@ export function Logo({ size = 24, withWordmark = true }: { size?: number; withWo
       <LogoMark size={size} />
       {withWordmark && (
         <span className="font-extrabold tracking-tight" style={{ fontSize: size * 0.82 }}>
-          <span style={{ color: 'var(--accent)' }}>Our</span>Glass
+          <span style={{ color: 'var(--accent)' }}>Hour</span>Glass
         </span>
       )}
     </span>

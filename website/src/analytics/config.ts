@@ -6,7 +6,7 @@ import type { Address } from 'viem';
  * no backend, no central registry. See /docs/analytics and ADR 0002.
  *
  * The instances live on Ethereum mainnet (see the Vite app's
- * `src/config/addresses.ts` → chain 1 `ourglass`). Only charges routed to these
+ * `src/config/addresses.ts` → chain 1 `hourglass`). Only charges routed to these
  * instances are attributable to OurGlass.
  */
 // Mainnet RPC for the log scan. Must serve historical `eth_getLogs` without a key:

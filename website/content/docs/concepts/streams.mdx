@@ -38,7 +38,7 @@ while, nothing is lost; it keeps accumulating (up to `maxAmount`).
 stream has unlocked `maxAmount` in total, more elapsed time unlocks nothing
 further.
 
-OurGlass streams set `maxAmount` to the maximum `uint256`, so the ceiling never
+HourGlass streams set `maxAmount` to the maximum `uint256`, so the ceiling never
 binds and the **rate is the only limit** — the stream is effectively unbounded in
 total but still capped in how fast it can be drawn. The field cannot be omitted
 (the caveat's terms layout always includes it); neutralizing it to the maximum is
@@ -50,7 +50,7 @@ the accrual **rate** and the payer's ability to **revoke**.
 
 ## Rate as a scale
 
-In the app, you set a human rate (for example "1000 USDC per month") and OurGlass
+In the app, you set a human rate (for example "1000 USDC per month") and HourGlass
 derives `amountPerSecond` by integer division. Sub-wei-per-second remainders are
 dropped, so the effective rate is at most the one you requested — it never
 over-pays.

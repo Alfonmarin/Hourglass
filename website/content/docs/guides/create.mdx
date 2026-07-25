@@ -11,7 +11,7 @@ Creating an agreement is a single signature from the payer's Safe.
    cap) or a [stream](/docs/concepts/streams) (linear accrual).
 2. **Set the terms.** Token, receiver, amount/rate, cadence, start date, optional
    end date.
-3. **Pin & sign.** OurGlass pins the human-readable agreement to IPFS and derives
+3. **Pin & sign.** HourGlass pins the human-readable agreement to IPFS and derives
    the delegation `salt = keccak256(terms)`. You sign one EIP-712 delegation.
 4. **Done.** The signed delegation is stored client-side. No further signing is
    needed for future charges.

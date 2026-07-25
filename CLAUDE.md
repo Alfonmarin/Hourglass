@@ -48,7 +48,7 @@ Safe App. Vite + React + TypeScript, Tailwind CSS v4 (tokens dans le bloc
 ## Déploiement
 
 - On a quitté Vercel → maintenant hébergé sur **Coolify**. Tout est déployé.
-- URL live (et URL à enregistrer comme Safe App) : **https://ourglass.intuition.box/**
+- URL live (et URL à enregistrer comme Safe App) : **https://hourglass.box/**
 - Une variable d'env manquante/non configurée était la cause de l'erreur Safe
   « doesn't support Safe App functionality ». Elle est maintenant en place côté
   Coolify.
