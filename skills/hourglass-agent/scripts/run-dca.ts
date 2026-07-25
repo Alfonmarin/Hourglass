@@ -221,7 +221,7 @@ async function buildSwap(apiKey: string, req: { swapper: Address; tokenIn: Addre
   const quote = await apiPost<{ routing: string; quote: unknown }>('/quote', apiKey, {
     swapper: req.swapper, tokenIn: req.tokenIn, tokenOut: req.tokenOut,
     tokenInChainId: String(req.chainId), tokenOutChainId: String(req.chainId),
-    amount: req.amount, type: 'EXACT_INPUT', slippageTolerance: 0.5, routingPreference: 'CLASSIC',
+    amount: req.amount, type: 'EXACT_INPUT', slippageTolerance: 0.5, routingPreference: 'BEST_PRICE',
   })
   if (quote.routing !== 'CLASSIC') throw new Error(`expected CLASSIC routing, got "${quote.routing}" — cannot redeem a non-router swap`)
   const body = await apiPost<{ swap: TradingApiTx }>('/swap', apiKey, { quote: quote.quote })

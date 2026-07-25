@@ -135,12 +135,16 @@ export default function Strategy() {
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
         swapRouter: router,
+        // The bounds watch the Safe, not the module: the module executes via
+        // safe.execTransactionFromModule, so the swap runs with msg.sender == the Safe
+        // — the Safe is what spends the funding token and receives the bought token.
+        // Watching the module (which holds nothing) makes the enforcer revert.
         bounds: [
           // Max spend on the funding token — the anti-drain cap.
-          { tokenAddress: fundingAddress as Address, recipient: moduleAddress, amount: capRaw, direction: 'decrease' as const },
+          { tokenAddress: fundingAddress as Address, recipient: safe.safeAddress as Address, amount: capRaw, direction: 'decrease' as const },
           // Min received on the bought token — the price floor (only if a max price is set).
           ...(minReceivedRaw > 0n
-            ? [{ tokenAddress: targetToken as Address, recipient: moduleAddress, amount: minReceivedRaw, direction: 'increase' as const }]
+            ? [{ tokenAddress: targetToken as Address, recipient: safe.safeAddress as Address, amount: minReceivedRaw, direction: 'increase' as const }]
             : []),
         ],
       })

@@ -74,7 +74,10 @@ export async function buildSwap(apiKey: string, req: SwapRequest): Promise<Tradi
     amount: req.amount,
     type: 'EXACT_INPUT',
     slippageTolerance: req.slippageTolerance ?? 0.5,
-    routingPreference: 'CLASSIC',
+    // routingPreference now accepts only BEST_PRICE | FASTEST (CLASSIC was deprecated
+    // as an input). "CLASSIC" remains the response `routing` value we still require
+    // below to reject a non-redeemable UniswapX order.
+    routingPreference: 'BEST_PRICE',
   })
   if (quote.routing !== 'CLASSIC') {
     throw new Error(`expected CLASSIC routing, got "${quote.routing}" — cannot redeem a non-router swap`)
