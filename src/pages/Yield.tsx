@@ -17,6 +17,8 @@ import { IconTrend, IconAlert, IconCheck } from '../ui/icons'
 
 const feeLabel = (fee: number) => `${(fee / 10_000).toFixed(2)}%`
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
+const usdCompact = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
+const numCompact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
 // A signed delegation grants a real permission; keep the window it stays
 // redeemable short rather than open-ended.
@@ -240,11 +242,16 @@ export default function Yield() {
                     <div className="text-[11px] font-mono text-faint truncate">{short(p.poolAddress)}</div>
                   </div>
                 </div>
+                <div className="text-center shrink-0 px-4">
+                  <div className="text-[11px] font-semibold text-faint uppercase tracking-wide">TVL</div>
+                  <div className="font-mono font-bold text-ink tnum" style={{ fontSize: 18 }}>
+                    {p.tvlUSD !== null
+                      ? usdCompact.format(p.tvlUSD)
+                      : `${numCompact.format(Number(formatUnits(p.tvlToken0, p.token0.decimals)))} ${p.token0.symbol} + ${numCompact.format(Number(formatUnits(p.tvlToken1, p.token1.decimals)))} ${p.token1.symbol}`}
+                  </div>
+                </div>
                 <div className="text-right shrink-0">
                   <div className="font-mono text-sm text-ink tnum">{p.apy !== null ? `${(p.apy * 100).toFixed(1)}% APY` : 'insufficient data'}</div>
-                  <div className="text-[11px] text-faint mt-0.5">
-                    {formatUnits(p.tvlToken0, p.token0.decimals)} {p.token0.symbol} + {formatUnits(p.tvlToken1, p.token1.decimals)} {p.token1.symbol}
-                  </div>
                 </div>
               </Card>
             )
