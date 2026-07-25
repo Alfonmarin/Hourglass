@@ -1,5 +1,6 @@
 import type { Charge } from './events';
 import { dayKey } from './format';
+import { tokenKey } from './config';
 
 /** Headline figures across all charges. */
 export interface Totals {
@@ -9,6 +10,7 @@ export interface Totals {
   agreements: number;
   receivers: number;
   tokens: number;
+  chains: number;
 }
 
 export function totals(charges: Charge[]): Totals {
@@ -18,12 +20,17 @@ export function totals(charges: Charge[]): Totals {
     streamClaims: charges.filter((c) => c.kind === 'stream').length,
     agreements: new Set(charges.map((c) => c.delegationHash)).size,
     receivers: new Set(charges.map((c) => c.redeemer.toLowerCase())).size,
-    tokens: new Set(charges.map((c) => c.token.toLowerCase())).size,
+    // A token is (chain, address): the same symbol on two chains is two assets.
+    tokens: new Set(charges.map((c) => tokenKey(c.chainId, c.token))).size,
+    chains: new Set(charges.map((c) => c.chainId)).size,
   };
 }
 
-/** Volume + count per token (amounts are only summable within a token). */
+/** Volume + count per token (amounts are only summable within a chain's token). */
 export interface TokenVolume {
+  /** `chainId:address` — the map key used everywhere token metadata is looked up. */
+  key: string;
+  chainId: number;
   token: string;
   total: bigint;
   count: number;
@@ -32,11 +39,30 @@ export interface TokenVolume {
 export function byToken(charges: Charge[]): TokenVolume[] {
   const map = new Map<string, TokenVolume>();
   for (const c of charges) {
-    const key = c.token.toLowerCase();
-    const row = map.get(key) ?? { token: key, total: 0n, count: 0 };
+    const key = tokenKey(c.chainId, c.token);
+    const row = map.get(key) ?? { key, chainId: c.chainId, token: c.token.toLowerCase(), total: 0n, count: 0 };
     row.total += c.amount;
     row.count += 1;
     map.set(key, row);
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
+}
+
+/** Charge count and per-token volume for one chain. */
+export interface ChainVolume {
+  chainId: number;
+  count: number;
+  volumeByToken: Map<string, bigint>;
+}
+
+export function byChain(charges: Charge[]): ChainVolume[] {
+  const map = new Map<number, ChainVolume>();
+  for (const c of charges) {
+    const row = map.get(c.chainId) ?? { chainId: c.chainId, count: 0, volumeByToken: new Map() };
+    row.count += 1;
+    const k = tokenKey(c.chainId, c.token);
+    row.volumeByToken.set(k, (row.volumeByToken.get(k) ?? 0n) + c.amount);
+    map.set(c.chainId, row);
   }
   return [...map.values()].sort((a, b) => b.count - a.count);
 }
@@ -54,7 +80,7 @@ function groupBy(charges: Charge[], keyOf: (c: Charge) => string): Group[] {
     const key = keyOf(c);
     const g = map.get(key) ?? { key, count: 0, volumeByToken: new Map() };
     g.count += 1;
-    const t = c.token.toLowerCase();
+    const t = tokenKey(c.chainId, c.token);
     g.volumeByToken.set(t, (g.volumeByToken.get(t) ?? 0n) + c.amount);
     map.set(key, g);
   }
