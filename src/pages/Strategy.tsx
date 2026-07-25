@@ -144,6 +144,21 @@ export default function Strategy() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(300px,360px)] gap-6 items-stretch">
         <div className="space-y-5">
+          <Block title="Agent">
+            <p className="text-xs text-dim -mt-1 leading-relaxed">
+              You run the agent, not us — set it up with the Hourglass skill (it creates a wallet, funds a little gas, and
+              redeems this mandate). Paste its address here; everything below stays locked until you do.
+            </p>
+            <Field label="Agent address" required missing={agent !== '' && !agentValid}>
+              <input
+                type="text" placeholder="0x…" value={agent}
+                onChange={(e) => setAgent(e.target.value)}
+                className={`font-mono ${agent && !agentValid ? 'ring-1 ring-danger' : ''}`}
+              />
+            </Field>
+          </Block>
+
+          <div className={agentValid ? 'space-y-5' : 'space-y-5 opacity-40 pointer-events-none select-none'} aria-disabled={!agentValid}>
           <Block
             title="Funding token"
             action={
@@ -242,14 +257,8 @@ export default function Strategy() {
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">{fundingSymbol}</span>
               </div>
             </Field>
-            <Field label="Agent address" required missing={agent !== '' && !agentValid}>
-              <input
-                type="text" placeholder="0x…" value={agent}
-                onChange={(e) => setAgent(e.target.value)}
-                className={`font-mono ${agent && !agentValid ? 'ring-1 ring-danger' : ''}`}
-              />
-            </Field>
           </Block>
+          </div>
         </div>
 
         <Card className="p-5 flex flex-col">
