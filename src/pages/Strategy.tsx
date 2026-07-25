@@ -90,7 +90,7 @@ export default function Strategy() {
         agentAddress: agent as Address,
         environment: getEnvironment(safe.chainId),
         swapRouter: router,
-        caps: [{ tokenAddress: fundingAddress as Address, recipient: moduleAddress, amount: capRaw }],
+        bounds: [{ tokenAddress: fundingAddress as Address, recipient: moduleAddress, amount: capRaw, direction: 'decrease' }],
       })
 
       setStep('signing')

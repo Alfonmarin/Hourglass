@@ -27,7 +27,7 @@ function dcaMandate() {
     agentAddress: AGENT,
     environment: getEnvironment(CHAIN),
     swapRouter: ROUTER,
-    caps: [{ tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n }],
+    bounds: [{ tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n, direction: 'decrease' as const }],
   })
 }
 
@@ -59,15 +59,15 @@ describe('buildStrategyMandate', () => {
     expect(t.amount).toBe(55_000_000n)
   })
 
-  test('range mandate stacks a second cap on a distinct token', () => {
+  test('stacks a max-spend (decrease) + a min-received (increase) on distinct tokens', () => {
     const m = buildStrategyMandate({
       moduleAddress: MODULE,
       agentAddress: AGENT,
       environment: getEnvironment(CHAIN),
       swapRouter: ROUTER,
-      caps: [
-        { tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n },
-        { tokenAddress: WETH, recipient: MODULE, amount: 20_000_000_000_000_000n },
+      bounds: [
+        { tokenAddress: USDC, recipient: MODULE, amount: 55_000_000n, direction: 'decrease' as const },
+        { tokenAddress: WETH, recipient: MODULE, amount: 20_000_000_000_000_000n, direction: 'increase' as const },
       ],
     })
     const balanceChanges = m.caveats.filter(
@@ -76,15 +76,15 @@ describe('buildStrategyMandate', () => {
     expect(balanceChanges).toHaveLength(2)
   })
 
-  test('throws when given no caps', () => {
+  test('throws when given no bounds', () => {
     expect(() =>
       buildStrategyMandate({
         moduleAddress: MODULE,
         agentAddress: AGENT,
         environment: getEnvironment(CHAIN),
         swapRouter: ROUTER,
-        caps: [],
+        bounds: [],
       }),
-    ).toThrow(/at least one spend cap/)
+    ).toThrow(/at least one balance bound/)
   })
 })
