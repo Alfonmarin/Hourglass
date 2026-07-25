@@ -1,0 +1,63 @@
+import { type Address } from 'viem'
+import { base } from 'viem/chains'
+
+/**
+ * Aqua (1inch's shared liquidity layer) and the SwapVM app strategies ship to.
+ *
+ * Base only, deliberately. Both contracts sit at the same address on twelve
+ * mainnets, but the encoding below — the opcode table in particular — was
+ * verified against the Base deployment only (see spec/aqua-swapvm-encoding.md).
+ * Opcodes are positions in a function table, not a stable enum, so a chain
+ * running a different build would silently accept a program that ships fine and
+ * reverts at swap time. Add a chain here only after re-running
+ * scripts/aqua-spike.sh against it.
+ */
+export const AQUA_ADDRESS: Record<number, Address> = {
+  [base.id]: '0x499943e74fb0ce105688beee8ef2abec5d936d31',
+}
+
+/** `AquaSwapVMRouter` — the Aqua app we ship to. Same caveat as above. */
+export const AQUA_SWAPVM_ADDRESS: Record<number, Address> = {
+  [base.id]: '0x8fDD04Dbf6111437B44bbca99C28882434e0958f',
+}
+
+/** True when Aqua is wired for a chain — drives the page's unsupported state. */
+export function isAquaSupported(chainId: number | undefined): boolean {
+  return chainId !== undefined && chainId in AQUA_ADDRESS
+}
+
+/**
+ * SwapVM opcodes for the *deployed* AquaSwapVMRouter build.
+ *
+ * These are indices into the router's `_opcodes()` function table, which is
+ * built with an assembly trick that drops the first entry — so opcode `i` is
+ * `instructions[i+1]`. They have already shifted at least once between builds:
+ * the orders shipped on Base in Nov 2025 use a different table and are not
+ * executable. Never take these from the GitHub repo; they came from the
+ * verified deployed source and were confirmed by execution.
+ */
+export const AQUA_OPCODE = {
+  deadline: 0x0d,
+  xycSwap: 0x11,
+  salt: 0x15,
+  flatFeeAmountIn: 0x16,
+} as const
+
+/**
+ * SwapVM's fee scale: 1e9 is 100%. The instruction argument is named `feeBps` in
+ * the contract, which is a misnomer worth keeping in sync with the source rather
+ * than renaming here.
+ */
+export const FEE_DENOMINATOR = 1_000_000_000
+
+export interface FeePreset {
+  label: string
+  feeBps: number
+}
+
+/** The fee tiers the page offers, mirroring the familiar Uniswap v3 tiers. */
+export const FEE_PRESETS: readonly FeePreset[] = [
+  { label: '0.05%', feeBps: 500_000 },
+  { label: '0.30%', feeBps: 3_000_000 },
+  { label: '1.00%', feeBps: 10_000_000 },
+]

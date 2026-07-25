@@ -220,20 +220,24 @@ UI implying idle liquidity earns yield would be misleading.
 
 ## Task breakdown
 
-| # | Task | Verification |
-|---|---|---|
-| 0 | ~~Encoder spike~~ **done** | `scripts/aqua-spike.sh` passes |
-| 1 | `config/aqua.ts` + `lib/aqua/order.ts` | unit tests: our `strategyHash` equals `SwapVM.hash()` read from a fork |
-| 2 | `lib/aqua/program.ts` | unit tests against fixtures captured in task 0 |
-| 3 | `lib/aqua/ship.ts` | unit test on the tx array; no network |
-| 4 | `lib/aqua/positions.ts` + `useAquaPositions` | fork test: ship → read → dock → read |
-| 5 | `pages/Aqua.tsx` + nav | `bun run build`, `ui-reviewer` agent |
-| 6 | End-to-end on an Anvil Base fork | ship + dock from a real Safe, scripted |
+| # | Task | Verification | Status |
+|---|---|---|---|
+| 0 | Encoder spike | `scripts/aqua-spike.sh` passes | done |
+| 1 | `config/aqua.ts` + `lib/aqua/order.ts` | `strategyHash` equals on-chain `SwapVM.hash()` | done |
+| 2 | `lib/aqua/program.ts` | unit tests against task-0 fixtures | done |
+| 3 | `lib/aqua/ship.ts` | tx array decoded back in unit tests | done |
+| 4 | `lib/aqua/positions.ts` + `useAquaPositions` | fork: ship → read → dock → read | done |
+| 5 | `pages/Aqua.tsx` + nav | `bun run build`, lint | done (`ui-reviewer` not run) |
+| 6 | End-to-end on an Anvil Base fork | `scripts/aqua-fork-check.ts` passes | done |
 
-Per `.claude/rules/workflow.md`: `bun run build` and `bun run test:unit` green,
-`ui-reviewer` on the page, and an ADR in `.claude/choices/` for the two
-non-obvious calls — pinning the opcode table to a deployed build, and
-exact-amount approvals over max approval.
+Per `.claude/rules/workflow.md`: `bun run build` green, the new unit tests green,
+lint clean on the new files, and ADRs 0007 (pinning the opcode table to a
+deployed build) and 0008 (exact-amount approvals, mandatory salt). The
+`ui-reviewer` agent has **not** been run on `pages/Aqua.tsx` — still outstanding.
+
+Note: `bun run test:unit` has one pre-existing failure in
+`stream-amounts.test.ts`, unrelated to this work (confirmed by stashing these
+changes and re-running).
 
 ## Open decisions
 
