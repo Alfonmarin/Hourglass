@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
-import { formatUnits, parseUnits, type Address, type Hex } from 'viem'
+import { createPublicClient, erc20Abi, formatUnits, http, parseUnits, type Address, type Hex, type PublicClient } from 'viem'
+import { findChain, rpcUrl } from '../config/supported-chains'
 import { useSafeTokens } from '../hooks/useSafeTokens'
 import { useAquaPositions, type AquaPosition } from '../hooks/useAquaPositions'
 import type { HeldToken } from '../lib/safe-balances'
 import { AQUA_ADDRESS, AQUA_SWAPVM_ADDRESS, FEE_PRESETS, isAquaSupported } from '../config/aqua'
 import { buildAmmProgram, randomSalt } from '../lib/aqua/program'
 import { buildAquaOrder, strategyHash } from '../lib/aqua/order'
-import { buildShipTxs, buildDockTxs } from '../lib/aqua/ship'
+import { buildShipTxs, buildDockTxs, buildTopUpTxs } from '../lib/aqua/ship'
 import { saveAquaStrategy, setAquaStrategyStatus } from '../lib/aqua/positions'
 import { Card, Btn, CopyChip } from '../ui/components'
 import { Block, Field, PreviewRow } from '../ui/form'
@@ -46,8 +47,10 @@ export default function Aqua() {
   const amount0Raw = raw(amount0, token0)
   const amount1Raw = raw(amount1, token1)
   const samePair = Boolean(token0 && token1 && token0.address === token1.address)
-  const overBalance0 = Boolean(token0 && amount0Raw > token0.balance)
-  const overBalance1 = Boolean(token1 && amount1Raw > token1.balance)
+  // Shipping above the Safe's balance is allowed on purpose — see `aboveBalance`
+  // in TokenLeg for why it is a strategy choice rather than a mistake.
+  const aboveBalance0 = Boolean(token0 && amount0Raw > token0.balance)
+  const aboveBalance1 = Boolean(token1 && amount1Raw > token1.balance)
 
   const preview =
     token0 && token1 && !samePair
@@ -58,16 +61,20 @@ export default function Aqua() {
       : null
 
   const canShip = Boolean(
-    supported &&
-      token0 &&
-      token1 &&
-      !samePair &&
-      amount0Raw > 0n &&
-      amount1Raw > 0n &&
-      !overBalance0 &&
-      !overBalance1 &&
-      step === 'idle',
+    supported && token0 && token1 && !samePair && amount0Raw > 0n && amount1Raw > 0n && step === 'idle',
   )
+
+  /** The Safe's live allowance to Aqua. Read fresh: it is shared across strategies. */
+  async function readAllowances(aqua: Address, tokens: Address[]): Promise<bigint[]> {
+    const chain = findChain(chainId)
+    if (!chain) throw new Error(`Unsupported chain: ${chainId}`)
+    const client = createPublicClient({ chain, transport: http(rpcUrl(chainId)) }) as PublicClient
+    return Promise.all(
+      tokens.map((token) =>
+        client.readContract({ address: token, abi: erc20Abi, functionName: 'allowance', args: [safeAddress, aqua] }),
+      ),
+    )
+  }
 
   async function handleShip() {
     if (!token0 || !token1) return
@@ -83,9 +90,10 @@ export default function Aqua() {
       const program = buildAmmProgram({ feeBps, salt: randomSalt() })
       const order = buildAquaOrder(safeAddress, program)
       const hash = strategyHash(order)
+      const [allowance0, allowance1] = await readAllowances(aqua, [token0.address, token1.address])
       const legs = [
-        { address: token0.address, amount: amount0Raw },
-        { address: token1.address, amount: amount1Raw },
+        { address: token0.address, amount: amount0Raw, currentAllowance: allowance0 },
+        { address: token1.address, amount: amount1Raw, currentAllowance: allowance1 },
       ]
 
       await sdk.txs.send({ txs: buildShipTxs({ aqua, app, order, legs }) })
@@ -118,19 +126,45 @@ export default function Aqua() {
     try {
       const aqua = AQUA_ADDRESS[chainId]
       if (!aqua) throw new Error(`Aqua is not wired for chain ${chainId}`)
+      const tokens = position.tokens.map((t) => t.address)
+      const allowances = await readAllowances(aqua, tokens)
       await sdk.txs.send({
         txs: buildDockTxs({
           aqua,
           app: position.strategy.app,
           strategyHash: position.strategy.strategyHash,
-          tokens: position.strategy.tokens.map((t) => t.address),
-          revokeApprovals: true,
+          // Release only this strategy's share — the allowance backs the others too.
+          legs: position.tokens.map((token, i) => ({
+            address: token.address,
+            currentAllowance: allowances[i],
+            virtual: token.virtual,
+          })),
+          releaseAllowance: true,
         }),
       })
       setAquaStrategyStatus(position.strategy.strategyHash, 'docked')
       positions.refetch()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to dock the strategy')
+    }
+  }
+
+  /** Raise the shared allowance back to what every active strategy needs. */
+  async function handleTopUp() {
+    setError(null)
+    try {
+      const aqua = AQUA_ADDRESS[chainId]
+      if (!aqua) throw new Error(`Aqua is not wired for chain ${chainId}`)
+      const short = positions.demand.filter((d) => d.allowance < d.required)
+      const txs = buildTopUpTxs(
+        aqua,
+        short.map((d) => ({ address: d.address, currentAllowance: d.allowance, required: d.required })),
+      )
+      if (txs.length === 0) return
+      await sdk.txs.send({ txs })
+      positions.refetch()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore the approvals')
     }
   }
 
@@ -188,7 +222,7 @@ export default function Aqua() {
                   onSelect={setToken0}
                   amount={amount0}
                   onAmount={setAmount0}
-                  overBalance={overBalance0}
+                  aboveBalance={aboveBalance0}
                 />
                 <TokenLeg
                   label="Second token"
@@ -197,7 +231,7 @@ export default function Aqua() {
                   onSelect={setToken1}
                   amount={amount1}
                   onAmount={setAmount1}
-                  overBalance={overBalance1}
+                  aboveBalance={aboveBalance1}
                 />
               </div>
             )}
@@ -294,7 +328,7 @@ export default function Aqua() {
         </Card>
       </div>
 
-      <Positions positions={positions} onDock={handleDock} />
+      <Positions positions={positions} onDock={handleDock} onTopUp={handleTopUp} />
     </div>
   )
 }
@@ -318,6 +352,15 @@ function Header() {
   )
 }
 
+/**
+ * `aboveBalance` is deliberately not an error.
+ *
+ * Aqua prices against the virtual balance, and pulls the real tokens from the
+ * Safe at swap time. Shipping more than the Safe currently holds quotes deeper
+ * liquidity — tighter prices — and only reverts on a fill large enough to
+ * outrun the wallet. Meanwhile the fee on every swap is pushed straight into
+ * the Safe, so the real balance grows toward the shipped size on its own.
+ */
 function TokenLeg({
   label,
   tokens,
@@ -325,7 +368,7 @@ function TokenLeg({
   onSelect,
   amount,
   onAmount,
-  overBalance,
+  aboveBalance,
 }: {
   label: string
   tokens: HeldToken[]
@@ -333,7 +376,7 @@ function TokenLeg({
   onSelect: (token: HeldToken | null) => void
   amount: string
   onAmount: (value: string) => void
-  overBalance: boolean
+  aboveBalance: boolean
 }) {
   return (
     <div className="space-y-2">
@@ -354,7 +397,7 @@ function TokenLeg({
           ))}
         </select>
       </Field>
-      <Field label="Amount" required missing={overBalance}>
+      <Field label="Amount" required>
         <input
           type="text"
           inputMode="decimal"
@@ -362,12 +405,17 @@ function TokenLeg({
           value={amount}
           onChange={(e) => onAmount(dec(e.target.value))}
           aria-label={`${label} amount`}
-          className={`font-mono ${overBalance ? 'ring-1 ring-danger' : ''}`}
+          className="font-mono"
         />
       </Field>
       {selected && (
         <p className="text-xs text-faint">
           Safe holds {formatUnits(selected.balance, selected.decimals)} {selected.symbol}
+        </p>
+      )}
+      {aboveBalance && (
+        <p className="text-xs text-dim leading-relaxed">
+          Above the balance — quotes deeper liquidity than the Safe holds. Large fills revert until fees close the gap.
         </p>
       )}
     </div>
@@ -377,10 +425,14 @@ function TokenLeg({
 function Positions({
   positions,
   onDock,
+  onTopUp,
 }: {
   positions: ReturnType<typeof useAquaPositions>
   onDock: (position: AquaPosition) => void
+  onTopUp: () => void
 }) {
+  const uncovered = positions.demand.filter((d) => d.required > 0n && !d.isCovered)
+  const underApproved = uncovered.filter((d) => d.allowance < d.required)
   if (positions.loading) {
     return <p className="text-xs text-faint mt-8">Reading strategies…</p>
   }
@@ -400,6 +452,49 @@ function Positions({
   return (
     <div className="mt-10">
       <h2 className="text-sm font-semibold text-ink mb-3">Strategies</h2>
+
+      {positions.demand.some((d) => d.required > 0n) && (
+        <Card className="p-4 mb-3">
+          <div className="text-xs font-semibold text-faint uppercase tracking-wide">Coverage</div>
+          <p className="text-[11px] text-dim mt-1 leading-relaxed">
+            One allowance per token serves every strategy at once, so these totals are what matter, not any single
+            strategy's share. A fill is capped by the smaller of the balance and the approval — shipping above them is a
+            valid choice, and the fee from each swap lands straight in the Safe, closing the gap over time.
+          </p>
+          <div className="mt-3 space-y-1">
+            {positions.demand
+              .filter((d) => d.required > 0n)
+              .map((d) => (
+                <div key={d.address} className="flex items-center justify-between text-xs">
+                  <span className="text-dim">{d.symbol}</span>
+                  <span className="font-mono text-faint tnum">
+                    needs <span className="text-ink">{formatUnits(d.required, d.decimals)}</span> · held{' '}
+                    <span className={d.held < d.required ? 'text-pending' : ''}>{formatUnits(d.held, d.decimals)}</span>{' '}
+                    · approved{' '}
+                    <span className={d.allowance < d.required ? 'text-pending' : ''}>
+                      {formatUnits(d.allowance, d.decimals)}
+                    </span>
+                  </span>
+                </div>
+              ))}
+          </div>
+          {underApproved.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-line">
+              <p className="text-[11px] text-dim leading-relaxed mb-2">
+                {underApproved.some((d) => d.allowance === 0n)
+                  ? 'One token has no approval left, so no fill can be served on it. '
+                  : 'The approval is below the shipped total, so fills are capped by it rather than by the strategy. '}
+                Every pull spends allowance, so this is normal maintenance rather than a fault. Topping up moves no
+                tokens.
+              </p>
+              <Btn kind="primary" onClick={onTopUp}>
+                Top up approval
+              </Btn>
+            </div>
+          )}
+        </Card>
+      )}
+
       <div className="space-y-2">
         {positions.positions.map((position) => (
           <Card key={position.strategy.strategyHash} className="p-4">
@@ -423,12 +518,10 @@ function Positions({
                   <span className="text-[11px] text-faint">docked</span>
                 ) : position.isBacked ? (
                   <span className="text-[11px] text-active inline-flex items-center gap-1">
-                    <IconCheck size={12} /> backed
+                    <IconCheck size={12} /> fully covered
                   </span>
                 ) : (
-                  <span className="text-[11px] text-pending inline-flex items-center gap-1">
-                    <IconAlert size={12} /> not backed
-                  </span>
+                  <span className="text-[11px] text-faint">partially covered</span>
                 )}
               </div>
             </div>
@@ -438,17 +531,15 @@ function Positions({
                 <div key={token.address} className="flex items-center justify-between text-xs">
                   <span className="text-dim">{token.symbol}</span>
                   <span className="font-mono text-faint tnum">
-                    <span className="text-ink">{formatUnits(token.virtual, token.decimals)}</span> on Aqua · held{' '}
-                    {formatUnits(token.held, token.decimals)} · approved {formatUnits(token.allowance, token.decimals)}
+                    <span className="text-ink">{formatUnits(token.virtual, token.decimals)}</span> on Aqua
                   </span>
                 </div>
               ))}
             </div>
 
             {!position.isDocked && !position.isBacked && (
-              <p className="text-[11px] text-pending mt-2 leading-relaxed">
-                The Safe no longer holds or approves enough to cover this strategy, so a taker could not be paid from
-                it. Aqua does not check this when shipping.
+              <p className="text-[11px] text-faint mt-2 leading-relaxed">
+                Fills on this pair are capped by the Safe's balance and approval — see Coverage above.
               </p>
             )}
 

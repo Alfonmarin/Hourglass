@@ -21,10 +21,43 @@ moment it is docked: re-shipping identical parameters reverts
 `StrategiesMustBeImmutable` forever. Verified directly — see
 `scripts/aqua-spike.sh` step 5.
 
+## Amendment (2026-07-25, same day)
+
+The first implementation treated the allowance as **per strategy**. It is not:
+an ERC-20 allowance is a single value per `(owner, spender)`, and Aqua's whole
+design is one approval serving many strategies. Two defects followed, both found
+by a user running three strategies over the same pair:
+
+- `buildShipTxs` called `approve(amount)`, which **overwrites**. Shipping a
+  second strategy silently un-backed the first.
+- `buildDockTxs` revoked to `0`, which un-backed every *other* active strategy
+  over those tokens.
+
+A third followed from the same mistake: the backed check compared one strategy
+against the shared allowance, so it read green while the strategies collectively
+were not covered.
+
+Corrected: ship approves `currentAllowance + amount`, dock releases only this
+strategy's share (`currentAllowance - virtual`, floored at zero), and coverage is
+computed per token against the summed demand of all active strategies. There is
+also a top-up action, because **every pull spends allowance** — maintenance is
+expected, not exceptional.
+
+Also corrected: shipping **above** the Safe's balance is now allowed and framed
+as a strategy choice. Aqua prices against the virtual balance and pulls real
+tokens at swap time, so over-subscribing quotes deeper liquidity and only reverts
+on a fill large enough to outrun the wallet. Verified in the deployed `Fee.sol`:
+`_feeAmountIn` prices the curve on the discounted amount but restores the taker's
+full `amountIn` before the push, and there is no protocol collector in that path
+— the fee lands in the maker's own wallet. So an over-subscribed position closes
+its own gap as it trades. The original form blocked this outright, which was
+wrong.
+
 ## Decision
 
-**Approve the exact shipped amount, never `type(uint256).max`.** A strategy that
-trades heavily can stall until the Safe re-approves; the page says so.
+**Approve the exact shipped amount, never `type(uint256).max`** — but
+accumulated across strategies, not overwritten. A strategy that trades heavily
+can stall until the Safe tops up; the page says so and offers the action.
 
 **Emit a fresh 4-byte salt instruction (`0x15`) on every ship.** `Controls._salt`
 is a no-op whose only effect is to perturb the program bytes and therefore the
@@ -53,16 +86,20 @@ hash. It is not exposed as a user-facing option.
 - Docking is always reversible: the same terms can be re-shipped under a new salt.
 
 **Negative:**
-- A strategy whose inbound leg grows past the approval stops being pullable
-  until re-approved. The position surface flags this as "not backed", but the
+- Fills are capped by the allowance, so it needs topping up as pulls consume it.
+  The Coverage panel surfaces the shortfall and offers the transaction, but the
   Safe must act on it.
+- Every ship needs a fresh on-chain allowance read before the batch can be
+  built, so `buildShipTxs` cannot be called from stale state.
 - Two strategies with identical terms are distinct on-chain and appear as
   separate rows. That is the protocol's model, not a display artefact.
 
 **Neutral (worth knowing):**
 - `dock()` moves no tokens, so unwinding costs only gas.
 - `ship()` checks neither balance nor allowance, so "shipped" never implies
-  "funded" — hence the separate backed/not-backed state in `useAquaPositions`.
+  "funded" — hence the per-token coverage state in `useAquaPositions`.
+- Over-subscription is a feature, not a warning state. The UI says "partially
+  covered", not "not backed", and never blocks it.
 
 ## References
 

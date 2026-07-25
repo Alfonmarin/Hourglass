@@ -72,6 +72,9 @@ async function send(tx: { to: string; value: string; data: string }) {
   return receipt
 }
 
+const allowanceOf = (token: Address) =>
+  publicClient.readContract({ address: token, abi: erc20Abi, functionName: 'allowance', args: [account.address, AQUA] })
+
 /** Write a USDC balance straight into the fork's storage. */
 async function fundUsdc(who: Address, amount: bigint) {
   const slot = keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [who, USDC_BALANCE_SLOT]))
@@ -125,8 +128,8 @@ async function main() {
     app: SWAPVM,
     order,
     legs: [
-      { address: WETH, amount: amount0 },
-      { address: USDC, amount: amount1 },
+      { address: WETH, amount: amount0, currentAllowance: await allowanceOf(WETH) },
+      { address: USDC, amount: amount1, currentAllowance: await allowanceOf(USDC) },
     ],
   })
   check('ship batch is approve, approve, ship', shipTxs.length === 3)
@@ -166,8 +169,11 @@ async function main() {
     aqua: AQUA,
     app: SWAPVM,
     strategyHash: hash,
-    tokens: [WETH, USDC],
-    revokeApprovals: true,
+    legs: [
+      { address: WETH, currentAllowance: amount0, virtual: amount0 },
+      { address: USDC, currentAllowance: amount1, virtual: amount1 },
+    ],
+    releaseAllowance: true,
   })
   for (const tx of dockTxs) await send(tx)
 

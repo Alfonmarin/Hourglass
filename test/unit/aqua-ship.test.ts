@@ -9,7 +9,7 @@
 import { describe, test, expect } from 'bun:test'
 import { decodeFunctionData, erc20Abi, getAddress, type Hex } from 'viem'
 import { AquaABI } from '../../src/config/abis'
-import { buildShipTxs, buildDockTxs } from '../../src/lib/aqua/ship'
+import { buildShipTxs, buildDockTxs, buildTopUpTxs, allowanceAfterShip, allowanceAfterDock } from '../../src/lib/aqua/ship'
 import { buildAquaOrder, encodeStrategy } from '../../src/lib/aqua/order'
 import { buildAmmProgram } from '../../src/lib/aqua/program'
 
@@ -22,8 +22,8 @@ const HASH: Hex = '0x384198e952a30e4cf5e4979d8728f1ff468bb84dcea648899191781ce04
 
 const order = buildAquaOrder(SAFE, buildAmmProgram({ feeBps: 3_000_000, salt: '0x00000001' }))
 const legs = [
-  { address: WETH, amount: 1_000_000_000_000_000_000n },
-  { address: USDC, amount: 2_000_000_000n },
+  { address: WETH, amount: 1_000_000_000_000_000_000n, currentAllowance: 0n },
+  { address: USDC, amount: 2_000_000_000n, currentAllowance: 0n },
 ]
 
 describe('buildShipTxs', () => {
@@ -48,6 +48,25 @@ describe('buildShipTxs', () => {
     }
   })
 
+  test('adds to an existing allowance instead of overwriting it', () => {
+    // The regression this guards: one Safe holds one allowance to Aqua, shared
+    // by every strategy. Approving the bare leg amount on a second ship would
+    // silently un-back the first.
+    const withExisting = buildShipTxs({
+      aqua: AQUA,
+      app: APP,
+      order,
+      legs: [
+        { address: WETH, amount: 1_000_000_000_000_000_000n, currentAllowance: 500_000_000_000_000_000n },
+        { address: USDC, amount: 2_000_000_000n, currentAllowance: 4_000_000n },
+      ],
+    })
+    const { args: weth } = decodeFunctionData({ abi: erc20Abi, data: withExisting[0].data as Hex })
+    const { args: usdc } = decodeFunctionData({ abi: erc20Abi, data: withExisting[1].data as Hex })
+    expect(weth?.[1]).toBe(1_500_000_000_000_000_000n)
+    expect(usdc?.[1]).toBe(2_004_000_000n)
+  })
+
   test('ships the encoded order with tokens and amounts in the same order', () => {
     const { functionName, args } = decodeFunctionData({ abi: AquaABI, data: txs[2].data as Hex })
     expect(functionName).toBe('ship')
@@ -60,30 +79,114 @@ describe('buildShipTxs', () => {
   test('rejects malformed strategies', () => {
     expect(() => buildShipTxs({ aqua: AQUA, app: APP, order, legs: [legs[0]] })).toThrow()
     expect(() =>
-      buildShipTxs({ aqua: AQUA, app: APP, order, legs: [legs[0], { address: WETH, amount: 1n }] }),
+      buildShipTxs({
+        aqua: AQUA,
+        app: APP,
+        order,
+        legs: [legs[0], { address: WETH, amount: 1n, currentAllowance: 0n }],
+      }),
     ).toThrow()
     expect(() =>
-      buildShipTxs({ aqua: AQUA, app: APP, order, legs: [legs[0], { address: USDC, amount: 0n }] }),
+      buildShipTxs({
+        aqua: AQUA,
+        app: APP,
+        order,
+        legs: [legs[0], { address: USDC, amount: 0n, currentAllowance: 0n }],
+      }),
     ).toThrow()
   })
 })
 
+describe('allowance arithmetic', () => {
+  test('a ship adds to what is already approved', () => {
+    expect(allowanceAfterShip(0n, 100n)).toBe(100n)
+    expect(allowanceAfterShip(40n, 100n)).toBe(140n)
+  })
+
+  test('a dock releases only this strategy’s share, and never underflows', () => {
+    expect(allowanceAfterDock(140n, 100n)).toBe(40n)
+    expect(allowanceAfterDock(100n, 100n)).toBe(0n)
+    // A pull can consume allowance, leaving less than the strategy's own share.
+    expect(allowanceAfterDock(30n, 100n)).toBe(0n)
+  })
+})
+
 describe('buildDockTxs', () => {
+  const legsFor = (currentAllowance: bigint, virtual: bigint) => [
+    { address: WETH, currentAllowance, virtual },
+    { address: USDC, currentAllowance, virtual },
+  ]
+
   test('docks with every token, since a partial dock reverts on-chain', () => {
-    const [dock] = buildDockTxs({ aqua: AQUA, app: APP, strategyHash: HASH, tokens: [WETH, USDC], revokeApprovals: false })
+    const [dock] = buildDockTxs({
+      aqua: AQUA,
+      app: APP,
+      strategyHash: HASH,
+      legs: legsFor(100n, 100n),
+      releaseAllowance: false,
+    })
     const { functionName, args } = decodeFunctionData({ abi: AquaABI, data: dock.data as Hex })
     expect(functionName).toBe('dock')
     expect(args?.[1]).toBe(HASH)
     expect(args?.[2]).toEqual([WETH, USDC])
   })
 
-  test('revoking adds a zero approval per token, because dock leaves them standing', () => {
-    const txs = buildDockTxs({ aqua: AQUA, app: APP, strategyHash: HASH, tokens: [WETH, USDC], revokeApprovals: true })
+  test('releases only this strategy’s share, leaving the other strategies backed', () => {
+    // 300 approved across three strategies of 100 each; docking one must leave 200.
+    const txs = buildDockTxs({
+      aqua: AQUA,
+      app: APP,
+      strategyHash: HASH,
+      legs: legsFor(300n, 100n),
+      releaseAllowance: true,
+    })
     expect(txs).toHaveLength(3)
     for (const tx of txs.slice(1)) {
       const { functionName, args } = decodeFunctionData({ abi: erc20Abi, data: tx.data as Hex })
       expect(functionName).toBe('approve')
+      expect(args?.[1]).toBe(200n)
+    }
+  })
+
+  test('zeroes the allowance only when this is the last strategy claiming it', () => {
+    const txs = buildDockTxs({
+      aqua: AQUA,
+      app: APP,
+      strategyHash: HASH,
+      legs: legsFor(100n, 100n),
+      releaseAllowance: true,
+    })
+    for (const tx of txs.slice(1)) {
+      const { args } = decodeFunctionData({ abi: erc20Abi, data: tx.data as Hex })
       expect(args?.[1]).toBe(0n)
     }
+  })
+
+  test('skips a no-op approve when nothing is left to release', () => {
+    const txs = buildDockTxs({
+      aqua: AQUA,
+      app: APP,
+      strategyHash: HASH,
+      legs: legsFor(0n, 0n),
+      releaseAllowance: true,
+    })
+    expect(txs).toHaveLength(1)
+  })
+})
+
+describe('buildTopUpTxs', () => {
+  test('raises only the tokens that are short', () => {
+    const txs = buildTopUpTxs(AQUA, [
+      { address: WETH, currentAllowance: 0n, required: 100n },
+      { address: USDC, currentAllowance: 500n, required: 500n },
+    ])
+    expect(txs).toHaveLength(1)
+    expect(txs[0].to).toBe(WETH)
+    const { args } = decodeFunctionData({ abi: erc20Abi, data: txs[0].data as Hex })
+    expect(args?.[1]).toBe(100n)
+  })
+
+  test('is a no-op when everything is covered', () => {
+    expect(buildTopUpTxs(AQUA, [{ address: WETH, currentAllowance: 100n, required: 100n }])).toHaveLength(0)
   })
 })
