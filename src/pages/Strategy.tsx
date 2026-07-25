@@ -50,6 +50,9 @@ export default function Strategy() {
   const [agent, setAgent] = useState('')
   const [step, setStep] = useState<SignStep>('idle')
   const [error, setError] = useState<string | null>(null)
+  // The instruction the operator hands to their agent — the DCA intent (target,
+  // amount, cadence) that is NOT published on-chain, keyed to the mandate.
+  const [recap, setRecap] = useState<string | null>(null)
 
   const useCustom = tokenMode === 'custom'
   const fundingAddress = useCustom ? customToken : (selectedToken?.address ?? '')
@@ -119,6 +122,22 @@ export default function Strategy() {
           enforceDecrease: true,
         },
       })
+
+      // The instruction to hand to the agent: the intent that isn't on-chain,
+      // keyed to the mandate by delegationHash + agent so the agent can match it
+      // to what it discovers on Intuition.
+      setRecap(JSON.stringify({
+        hourglassStrategy: 'dca',
+        chainId: safe.chainId,
+        safe: safe.safeAddress,
+        agent,
+        delegationHash: computeDelegationHash(signed),
+        fundingToken: fundingAddress,
+        targetToken,
+        amountPerBuy: buyAmount,
+        frequency,
+        capPerSwap: cap,
+      }, null, 2))
       setStep('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign the strategy')
@@ -295,9 +314,13 @@ export default function Strategy() {
             {step === 'done' ? (
               <div className="rounded-xl glass-soft ring-1 ring-line p-4 space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-active">
-                  <IconCheck size={16} /> Strategy signed — the agent can trade under the cap.
+                  <IconCheck size={16} /> Strategy signed.
                 </div>
-                <CopyChip value={agent} label="Copy agent address" />
+                <p className="text-xs text-dim leading-relaxed">
+                  The cap is on-chain; the recurring buy is not. Hand this instruction to your agent — it pairs it with the
+                  mandate it discovers on Intuition.
+                </p>
+                {recap && <CopyChip value={recap} label="Copy agent instruction" />}
               </div>
             ) : (
               <Btn kind="primary" size="lg" onClick={handleSign} disabled={!canSign} className="w-full">
