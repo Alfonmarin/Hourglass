@@ -50,6 +50,23 @@ export const AQUA_OPCODE = {
  */
 export const FEE_DENOMINATOR = 1_000_000_000
 
+/**
+ * How much allowance to leave above the shipped amount, when headroom is on.
+ *
+ * Every `pull()` spends allowance, and unlike the balance it does not grow back
+ * from fees — so an approval set to exactly the shipped size is consumed after
+ * roughly one turnover of the position, and the strategy stops filling until the
+ * Safe tops it up. A multiple buys that many turnovers of unattended operation
+ * while keeping the exposure bounded and legible, which `type(uint256).max`
+ * would not.
+ */
+export const APPROVAL_HEADROOM_MULTIPLIER = 10n
+
+/** The allowance to request for a leg: the shipped amount, or a multiple of it. */
+export function withHeadroom(amount: bigint, enabled: boolean): bigint {
+  return enabled ? amount * APPROVAL_HEADROOM_MULTIPLIER : amount
+}
+
 export interface FeePreset {
   label: string
   feeBps: number

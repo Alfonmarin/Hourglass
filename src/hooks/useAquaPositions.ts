@@ -14,6 +14,8 @@ export interface AquaPositionToken {
   decimals: number
   /** What was shipped, from the local record. */
   shipped: bigint
+  /** Allowance this strategy added when shipped. Undefined on pre-headroom records. */
+  approved?: bigint
   /** Aqua's virtual balance — grows and shrinks as takers swap. */
   virtual: bigint
 }
@@ -144,6 +146,7 @@ export function useAquaPositions(
             symbol: leg.token.symbol,
             decimals: leg.token.decimals,
             shipped: BigInt(leg.token.shipped),
+            approved: leg.token.approved === undefined ? undefined : BigInt(leg.token.approved),
             virtual: leg.virtual,
           })),
           isDocked,

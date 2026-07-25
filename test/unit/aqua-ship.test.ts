@@ -12,6 +12,7 @@ import { AquaABI } from '../../src/config/abis'
 import { buildShipTxs, buildDockTxs, buildTopUpTxs, allowanceAfterShip, allowanceAfterDock } from '../../src/lib/aqua/ship'
 import { buildAquaOrder, encodeStrategy } from '../../src/lib/aqua/order'
 import { buildAmmProgram } from '../../src/lib/aqua/program'
+import { withHeadroom, APPROVAL_HEADROOM_MULTIPLIER } from '../../src/config/aqua'
 
 const AQUA = getAddress('0x499943e74fb0ce105688beee8ef2abec5d936d31')
 const APP = getAddress('0x8fDD04Dbf6111437B44bbca99C28882434e0958f')
@@ -46,6 +47,39 @@ describe('buildShipTxs', () => {
       expect(args?.[1]).toBe(leg.amount)
       expect(args?.[1]).not.toBe(max)
     }
+  })
+
+  test('approves headroom above the shipped amount when asked', () => {
+    const txs = buildShipTxs({
+      aqua: AQUA,
+      app: APP,
+      order,
+      legs: [
+        { address: WETH, amount: 1_000_000n, currentAllowance: 0n, approve: 10_000_000n },
+        { address: USDC, amount: 2_000_000n, currentAllowance: 5n, approve: 20_000_000n },
+      ],
+    })
+    const { args: weth } = decodeFunctionData({ abi: erc20Abi, data: txs[0].data as Hex })
+    const { args: usdc } = decodeFunctionData({ abi: erc20Abi, data: txs[1].data as Hex })
+    expect(weth?.[1]).toBe(10_000_000n)
+    expect(usdc?.[1]).toBe(20_000_005n)
+    // The shipped amounts are untouched by headroom — only the approval grows.
+    const { args: ship } = decodeFunctionData({ abi: AquaABI, data: txs[2].data as Hex })
+    expect(ship?.[3]).toEqual([1_000_000n, 2_000_000n])
+  })
+
+  test('rejects an approval below the shipped amount', () => {
+    expect(() =>
+      buildShipTxs({
+        aqua: AQUA,
+        app: APP,
+        order,
+        legs: [
+          { address: WETH, amount: 1_000_000n, currentAllowance: 0n, approve: 999_999n },
+          { address: USDC, amount: 2_000_000n, currentAllowance: 0n },
+        ],
+      }),
+    ).toThrow()
   })
 
   test('adds to an existing allowance instead of overwriting it', () => {
@@ -112,9 +146,9 @@ describe('allowance arithmetic', () => {
 })
 
 describe('buildDockTxs', () => {
-  const legsFor = (currentAllowance: bigint, virtual: bigint) => [
-    { address: WETH, currentAllowance, virtual },
-    { address: USDC, currentAllowance, virtual },
+  const legsFor = (currentAllowance: bigint, release: bigint) => [
+    { address: WETH, currentAllowance, release },
+    { address: USDC, currentAllowance, release },
   ]
 
   test('docks with every token, since a partial dock reverts on-chain', () => {
@@ -188,5 +222,20 @@ describe('buildTopUpTxs', () => {
 
   test('is a no-op when everything is covered', () => {
     expect(buildTopUpTxs(AQUA, [{ address: WETH, currentAllowance: 100n, required: 100n }])).toHaveLength(0)
+  })
+})
+
+describe('withHeadroom', () => {
+  test('multiplies when on, passes through when off', () => {
+    expect(withHeadroom(100n, false)).toBe(100n)
+    expect(withHeadroom(100n, true)).toBe(100n * APPROVAL_HEADROOM_MULTIPLIER)
+  })
+
+  test('a docked strategy releases its headroom, not just its balance', () => {
+    // 10x headroom on a 100 position: docking must free all 1000, or the
+    // allowance would be stranded above what the remaining strategies need.
+    const approved = withHeadroom(100n, true)
+    expect(allowanceAfterDock(approved, approved)).toBe(0n)
+    expect(allowanceAfterDock(approved + 500n, approved)).toBe(500n)
   })
 })

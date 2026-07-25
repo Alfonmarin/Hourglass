@@ -28,7 +28,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts'
 import { base } from 'viem/chains'
 import { AquaABI } from '../src/config/abis'
-import { AQUA_ADDRESS, AQUA_SWAPVM_ADDRESS } from '../src/config/aqua'
+import { AQUA_ADDRESS, AQUA_SWAPVM_ADDRESS, APPROVAL_HEADROOM_MULTIPLIER, withHeadroom } from '../src/config/aqua'
 import { buildAmmProgram, randomSalt } from '../src/lib/aqua/program'
 import { buildAquaOrder, strategyHash } from '../src/lib/aqua/order'
 import { buildShipTxs, buildDockTxs } from '../src/lib/aqua/ship'
@@ -128,8 +128,8 @@ async function main() {
     app: SWAPVM,
     order,
     legs: [
-      { address: WETH, amount: amount0, currentAllowance: await allowanceOf(WETH) },
-      { address: USDC, amount: amount1, currentAllowance: await allowanceOf(USDC) },
+      { address: WETH, amount: amount0, currentAllowance: await allowanceOf(WETH), approve: withHeadroom(amount0, true) },
+      { address: USDC, amount: amount1, currentAllowance: await allowanceOf(USDC), approve: withHeadroom(amount1, true) },
     ],
   })
   check('ship batch is approve, approve, ship', shipTxs.length === 3)
@@ -150,7 +150,11 @@ async function main() {
     functionName: 'allowance',
     args: [account.address, AQUA],
   })
-  check('approval is the exact shipped amount, not unlimited', allowance === amount0)
+  check(
+    'approval carries headroom above the shipped amount, and is still bounded',
+    allowance === withHeadroom(amount0, true) && allowance < 2n ** 255n,
+    `${allowance} = ${amount0} x${APPROVAL_HEADROOM_MULTIPLIER}`,
+  )
 
   const { result } = await publicClient.simulateContract({
     address: SWAPVM,
@@ -170,8 +174,8 @@ async function main() {
     app: SWAPVM,
     strategyHash: hash,
     legs: [
-      { address: WETH, currentAllowance: amount0, virtual: amount0 },
-      { address: USDC, currentAllowance: amount1, virtual: amount1 },
+      { address: WETH, currentAllowance: await allowanceOf(WETH), release: withHeadroom(amount0, true) },
+      { address: USDC, currentAllowance: await allowanceOf(USDC), release: withHeadroom(amount1, true) },
     ],
     releaseAllowance: true,
   })
@@ -191,7 +195,7 @@ async function main() {
     functionName: 'allowance',
     args: [account.address, AQUA],
   })
-  check('dock batch revoked the approval', afterAllowance === 0n)
+  check('dock released the whole approval including headroom', afterAllowance === 0n, `${afterAllowance}`)
 
   const wethHeld = await publicClient.readContract({
     address: WETH,

@@ -25,6 +25,11 @@ export interface ShipLeg {
    * before building. Required, because the allowance is shared.
    */
   currentAllowance: bigint
+  /**
+   * Allowance to add for this leg. Defaults to `amount`; pass a larger value to
+   * leave headroom so the strategy keeps filling as pulls spend the allowance.
+   */
+  approve?: bigint
 }
 
 export interface ShipParams {
@@ -35,8 +40,8 @@ export interface ShipParams {
 }
 
 /** What a token's allowance must become to cover an existing position plus a new leg. */
-export function allowanceAfterShip(currentAllowance: bigint, amount: bigint): bigint {
-  return currentAllowance + amount
+export function allowanceAfterShip(currentAllowance: bigint, add: bigint): bigint {
+  return currentAllowance + add
 }
 
 /**
@@ -47,17 +52,18 @@ export function allowanceAfterShip(currentAllowance: bigint, amount: bigint): bi
  * that shared value and silently un-back every earlier strategy over the same
  * token — the allowance is per (owner, spender), not per strategy.
  *
- * Amounts are still exact, never `type(uint256).max`. The trade-off is real and
- * deliberate: as swaps run, `push()` can grow a token's virtual balance above
- * what was shipped, and a later `pull()` needs allowance to cover it — so a
- * strategy that trades heavily can stall until the Safe tops it up. A stalled
- * strategy is a recoverable inconvenience; a standing unlimited allowance on a
- * treasury is not.
+ * Amounts stay bounded and legible, never `type(uint256).max`, but `approve` may
+ * exceed the shipped amount to leave headroom: every `pull()` spends allowance
+ * and, unlike the balance, it is not replenished by fees, so an exact approval
+ * is used up after about one turnover and the strategy stops filling.
  */
 export function buildShipTxs({ aqua, app, order, legs }: ShipParams): SafeTx[] {
   if (legs.length < 2) throw new Error('a strategy needs at least two tokens')
   if (legs.some((leg) => leg.amount <= 0n)) throw new Error('every leg needs a non-zero amount')
   if (legs.some((leg) => leg.currentAllowance < 0n)) throw new Error('allowance cannot be negative')
+  if (legs.some((leg) => leg.approve !== undefined && leg.approve < leg.amount)) {
+    throw new Error('approval cannot be below the shipped amount')
+  }
   if (new Set(legs.map((leg) => leg.address.toLowerCase())).size !== legs.length) {
     throw new Error('duplicate token in strategy legs')
   }
@@ -68,7 +74,7 @@ export function buildShipTxs({ aqua, app, order, legs }: ShipParams): SafeTx[] {
     data: encodeFunctionData({
       abi: erc20Abi,
       functionName: 'approve',
-      args: [aqua, allowanceAfterShip(leg.currentAllowance, leg.amount)],
+      args: [aqua, allowanceAfterShip(leg.currentAllowance, leg.approve ?? leg.amount)],
     }),
   }))
 
@@ -89,8 +95,12 @@ export interface DockLeg {
   address: Address
   /** The Safe's current allowance to Aqua for this token. */
   currentAllowance: bigint
-  /** This strategy's remaining virtual balance — the share of the allowance it holds. */
-  virtual: bigint
+  /**
+   * This strategy's share of the shared allowance — what it added when shipped,
+   * including any headroom. Falls back to the virtual balance for strategies
+   * recorded before the approval was tracked.
+   */
+  release: bigint
 }
 
 export interface DockParams {
@@ -113,8 +123,8 @@ export interface DockParams {
  * so zeroing it on a dock would un-back all the others. Only this strategy's
  * own share comes off.
  */
-export function allowanceAfterDock(currentAllowance: bigint, virtual: bigint): bigint {
-  return currentAllowance > virtual ? currentAllowance - virtual : 0n
+export function allowanceAfterDock(currentAllowance: bigint, release: bigint): bigint {
+  return currentAllowance > release ? currentAllowance - release : 0n
 }
 
 /**
@@ -139,14 +149,14 @@ export function buildDockTxs({ aqua, app, strategyHash, legs, releaseAllowance }
 
   // Skip a token whose allowance would not move: a no-op approve is pure gas.
   const releases: SafeTx[] = legs
-    .filter((leg) => allowanceAfterDock(leg.currentAllowance, leg.virtual) !== leg.currentAllowance)
+    .filter((leg) => allowanceAfterDock(leg.currentAllowance, leg.release) !== leg.currentAllowance)
     .map((leg) => ({
       to: leg.address,
       value: '0',
       data: encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
-        args: [aqua, allowanceAfterDock(leg.currentAllowance, leg.virtual)],
+        args: [aqua, allowanceAfterDock(leg.currentAllowance, leg.release)],
       }),
     }))
 

@@ -19,6 +19,12 @@ export interface AquaStrategyToken {
   decimals: number
   /** Raw amount shipped, as a decimal string (bigint is not JSON-safe). */
   shipped: string
+  /**
+   * Allowance this strategy added when shipped, including headroom. Dock
+   * releases exactly this, so headroom is not stranded. Absent on records
+   * written before headroom existed — callers fall back to `shipped`.
+   */
+  approved?: string
 }
 
 export interface StoredAquaStrategy {

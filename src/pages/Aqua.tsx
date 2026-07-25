@@ -5,13 +5,20 @@ import { findChain, rpcUrl } from '../config/supported-chains'
 import { useSafeTokens } from '../hooks/useSafeTokens'
 import { useAquaPositions, type AquaPosition } from '../hooks/useAquaPositions'
 import type { HeldToken } from '../lib/safe-balances'
-import { AQUA_ADDRESS, AQUA_SWAPVM_ADDRESS, FEE_PRESETS, isAquaSupported } from '../config/aqua'
+import {
+  AQUA_ADDRESS,
+  AQUA_SWAPVM_ADDRESS,
+  APPROVAL_HEADROOM_MULTIPLIER,
+  FEE_PRESETS,
+  isAquaSupported,
+  withHeadroom,
+} from '../config/aqua'
 import { buildAmmProgram, randomSalt } from '../lib/aqua/program'
 import { buildAquaOrder, strategyHash } from '../lib/aqua/order'
 import { buildShipTxs, buildDockTxs, buildTopUpTxs } from '../lib/aqua/ship'
 import { saveAquaStrategy, setAquaStrategyStatus } from '../lib/aqua/positions'
 import { Card, Btn, CopyChip } from '../ui/components'
-import { Block, Field, PreviewRow } from '../ui/form'
+import { Block, Field, PreviewRow, Segmented } from '../ui/form'
 import { IconCube, IconCheck, IconAlert, IconLock } from '../ui/icons'
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -32,6 +39,8 @@ export default function Aqua() {
   const [amount0, setAmount0] = useState('')
   const [amount1, setAmount1] = useState('')
   const [feeBps, setFeeBps] = useState(FEE_PRESETS[1].feeBps)
+  // On by default: an exact approval is spent after roughly one turnover.
+  const [headroom, setHeadroom] = useState(true)
   const [step, setStep] = useState<ShipStep>('idle')
   const [shippedHash, setShippedHash] = useState<Hex | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -91,9 +100,11 @@ export default function Aqua() {
       const order = buildAquaOrder(safeAddress, program)
       const hash = strategyHash(order)
       const [allowance0, allowance1] = await readAllowances(aqua, [token0.address, token1.address])
+      const approve0 = withHeadroom(amount0Raw, headroom)
+      const approve1 = withHeadroom(amount1Raw, headroom)
       const legs = [
-        { address: token0.address, amount: amount0Raw, currentAllowance: allowance0 },
-        { address: token1.address, amount: amount1Raw, currentAllowance: allowance1 },
+        { address: token0.address, amount: amount0Raw, currentAllowance: allowance0, approve: approve0 },
+        { address: token1.address, amount: amount1Raw, currentAllowance: allowance1, approve: approve1 },
       ]
 
       await sdk.txs.send({ txs: buildShipTxs({ aqua, app, order, legs }) })
@@ -105,8 +116,20 @@ export default function Aqua() {
         strategyHash: hash,
         order: { maker: order.maker, traits: order.traits.toString(), data: order.data },
         tokens: [
-          { address: token0.address, symbol: token0.symbol, decimals: token0.decimals, shipped: amount0Raw.toString() },
-          { address: token1.address, symbol: token1.symbol, decimals: token1.decimals, shipped: amount1Raw.toString() },
+          {
+            address: token0.address,
+            symbol: token0.symbol,
+            decimals: token0.decimals,
+            shipped: amount0Raw.toString(),
+            approved: approve0.toString(),
+          },
+          {
+            address: token1.address,
+            symbol: token1.symbol,
+            decimals: token1.decimals,
+            shipped: amount1Raw.toString(),
+            approved: approve1.toString(),
+          },
         ],
         feeBps,
         createdAt: new Date().toISOString(),
@@ -137,7 +160,7 @@ export default function Aqua() {
           legs: position.tokens.map((token, i) => ({
             address: token.address,
             currentAllowance: allowances[i],
-            virtual: token.virtual,
+            release: token.approved ?? token.virtual,
           })),
           releaseAllowance: true,
         }),
@@ -155,10 +178,15 @@ export default function Aqua() {
     try {
       const aqua = AQUA_ADDRESS[chainId]
       if (!aqua) throw new Error(`Aqua is not wired for chain ${chainId}`)
-      const short = positions.demand.filter((d) => d.allowance < d.required)
+      const shortfall = positions.demand.filter((d) => d.allowance < d.required)
       const txs = buildTopUpTxs(
         aqua,
-        short.map((d) => ({ address: d.address, currentAllowance: d.allowance, required: d.required })),
+        shortfall.map((d) => ({
+          address: d.address,
+          currentAllowance: d.allowance,
+          // Same headroom rule as a ship, so a top-up does not immediately run dry.
+          required: withHeadroom(d.required, headroom),
+        })),
       )
       if (txs.length === 0) return
       await sdk.txs.send({ txs })
@@ -237,6 +265,43 @@ export default function Aqua() {
             )}
             {samePair && (
               <p className="text-xs text-danger mt-1">A strategy needs two different tokens.</p>
+            )}
+          </Block>
+
+          <Block
+            title="Approval"
+            action={
+              <Segmented
+                value={headroom}
+                onChange={setHeadroom}
+                options={[
+                  { key: true, label: `Headroom ×${APPROVAL_HEADROOM_MULTIPLIER}` },
+                  { key: false, label: 'Exact' },
+                ]}
+              />
+            }
+          >
+            <p className="text-xs text-dim -mt-1 leading-relaxed">
+              Every swap spends allowance, and unlike the balance it is not replenished by fees — an exact approval runs
+              out after roughly one turnover and the strategy stops filling. Headroom buys about{' '}
+              {APPROVAL_HEADROOM_MULTIPLIER.toString()} turnovers before a top-up is needed. Either way the amount is
+              bounded and visible; it is never unlimited.
+            </p>
+            {token0 && token1 && amount0Raw > 0n && amount1Raw > 0n && (
+              <div className="space-y-1">
+                {[
+                  { token: token0, amount: amount0Raw },
+                  { token: token1, amount: amount1Raw },
+                ].map(({ token, amount }) => (
+                  <div key={token.address} className="flex items-center justify-between text-xs">
+                    <span className="text-dim">{token.symbol}</span>
+                    <span className="font-mono text-faint tnum">
+                      approve <span className="text-ink">{formatUnits(withHeadroom(amount, headroom), token.decimals)}</span>{' '}
+                      for {formatUnits(amount, token.decimals)} shipped
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </Block>
 

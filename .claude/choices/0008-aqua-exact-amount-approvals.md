@@ -53,11 +53,28 @@ full `amountIn` before the push, and there is no protocol collector in that path
 its own gap as it trades. The original form blocked this outright, which was
 wrong.
 
+## Amendment 2 (2026-07-25) — headroom, on by default
+
+The original "exact amount" rule was wrong in practice. Every `pull()` spends
+allowance via `transferFrom`, and unlike the balance the allowance is **not**
+replenished by fees — so an exact approval is consumed after roughly one
+turnover of the position and the strategy silently stops filling. That is a bad
+default for a rail whose whole appeal is unattended market-making.
+
+Approvals now carry **10× headroom by default**, exposed as a two-option toggle
+(`Headroom ×10` / `Exact`) so it is one click to opt out. The multiplier is a
+named constant, the exact figure is shown per token before signing, and the
+value stays bounded and legible — still never `type(uint256).max`.
+
+Each strategy's approval contribution is recorded, so `dock()` releases exactly
+what it added, headroom included, rather than stranding 9× behind.
+
 ## Decision
 
-**Approve the exact shipped amount, never `type(uint256).max`** — but
-accumulated across strategies, not overwritten. A strategy that trades heavily
-can stall until the Safe tops up; the page says so and offers the action.
+**Approve a bounded, visible amount — by default 10× the shipped size —
+accumulated across strategies, never overwritten and never unlimited.** A
+strategy that outruns its approval stalls until topped up; the page shows the
+shortfall and offers the transaction.
 
 **Emit a fresh 4-byte salt instruction (`0x15`) on every ship.** `Controls._salt`
 is a no-op whose only effect is to perturb the program bytes and therefore the
@@ -68,9 +85,10 @@ hash. It is not exposed as a user-facing option.
 - **Unlimited approval** — makes a strategy trade indefinitely without
   maintenance, and is what most LP UIs do. Rejected: an unlimited allowance from
   a DAO treasury to a protocol with ~109 transactions of history is a poor
-  trade against an inconvenience that is recoverable with one transaction.
-- **Approve a multiple of the shipped amount (say 2×)** — an arbitrary constant
-  that is neither honest about the limit nor generous enough to remove it.
+  trade, and a bounded multiple buys most of the same convenience.
+- **Exact amount only** — the original decision, superseded by Amendment 2. It
+  reads as the safe choice but stalls the strategy after about one turnover,
+  which is a worse outcome than a bounded, visible headroom.
 - **No salt, and surface `StrategiesMustBeImmutable` as an error** — pushes an
   unrecoverable protocol detail onto the user for no benefit. A user who docks a
   position could never re-create it at the same terms.
