@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
 import { createPublicClient, http, parseUnits, formatUnits, erc20Abi, type Address, type Hex } from 'viem'
 import { useUniswapPools } from '../hooks/useUniswapPools'
@@ -65,8 +65,14 @@ export default function Yield() {
     }
   }, [pool, safe.chainId, safe.safeAddress])
 
-  const amount0Raw = pool && amount0 ? parseUnits(amount0, pool.token0.decimals) : 0n
-  const amount1Raw = pool && amount1 ? parseUnits(amount1, pool.token1.decimals) : 0n
+  const amount0Raw = useMemo<bigint>(() => {
+    if (!pool || !amount0) return 0n
+    try { return parseUnits(amount0, pool.token0.decimals) } catch { return 0n }
+  }, [pool, amount0])
+  const amount1Raw = useMemo<bigint>(() => {
+    if (!pool || !amount1) return 0n
+    try { return parseUnits(amount1, pool.token1.decimals) } catch { return 0n }
+  }, [pool, amount1])
   const hasBalance0 = balances ? amount0Raw <= balances.token0 : false
   const hasBalance1 = balances ? amount1Raw <= balances.token1 : false
   const canDelegate = Boolean(pool && agentAddress && amount0Raw > 0n && amount1Raw > 0n && hasBalance0 && hasBalance1)
