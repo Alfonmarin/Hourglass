@@ -77,7 +77,7 @@ From these events, filtered to our enforcer instances:
 | Per receiver | group by redeemer |
 | Per payer | join `delegationHash` → `RedeemedDelegation.rootDelegator` |
 | Per token | the `token` field |
-| Active agreements | distinct `delegationHash` charged in window, cross-referenced with `DisabledDelegation` for revokes |
+| Active agreements | distinct `delegationHash` ever charged, cross-referenced with `DisabledDelegation` for revokes |
 
 ## Indexing
 
@@ -100,6 +100,7 @@ From these events, filtered to our enforcer instances:
 ## Status
 
 The analytics page is live and reads on-chain directly. Only agreements routed to
-the self-deployed enforcer instances are attributable; the in-browser scan covers
-a bounded recent block window (ample for the current deployment), and a subgraph
-is the drop-in upgrade for unbounded history.
+the self-deployed enforcer instances are attributable; the in-browser scan runs
+from the enforcers' deployment block to head, so the totals are lifetime figures
+rather than a recent-window sample. The scan cost grows with history — a subgraph
+is the drop-in upgrade once that becomes the bottleneck.

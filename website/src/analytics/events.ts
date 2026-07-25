@@ -154,16 +154,15 @@ function streamCharges(rows: StreamRow[]): Charge[] {
 }
 
 /** Sweep one chain's enforcer instances. */
-async function loadChainCharges({ chain, rpcUrl, lookbackBlocks, chunkBlocks }: AnalyticsChain): Promise<Charge[]> {
+async function loadChainCharges({ chain, rpcUrl, startBlock, chunkBlocks }: AnalyticsChain): Promise<Charge[]> {
   const client = createPublicClient({ chain, transport: http(rpcUrl) });
   const latest = await client.getBlockNumber();
-  const fromBlock = latest > lookbackBlocks ? latest - lookbackBlocks : 0n;
 
   const [periodLogs, streamLogs] = await Promise.all([
-    paginate(fromBlock, latest, chunkBlocks, (from, to) =>
+    paginate(startBlock, latest, chunkBlocks, (from, to) =>
       client.getLogs({ address: HOURGLASS_ENFORCERS.period, event: PERIOD_EVENT, fromBlock: from, toBlock: to }),
     ),
-    paginate(fromBlock, latest, chunkBlocks, (from, to) =>
+    paginate(startBlock, latest, chunkBlocks, (from, to) =>
       client.getLogs({ address: HOURGLASS_ENFORCERS.stream, event: STREAM_EVENT, fromBlock: from, toBlock: to }),
     ),
   ]);
