@@ -15,6 +15,8 @@ export interface PoolInfo {
   tvlToken1: bigint
   /** Annualized fee yield estimate from the subgraph, or null if unavailable. */
   apy: number | null
+  /** USD-denominated TVL from the subgraph, or null if unavailable — prefer this over tvlToken0/1 when present. */
+  tvlUSD: number | null
 }
 
 /**
@@ -69,6 +71,7 @@ export async function discoverPools(client: PublicClient, chainId: number): Prom
         tvlToken0,
         tvlToken1,
         apy: null,
+        tvlUSD: null,
       })
     }
   }
@@ -80,19 +83,29 @@ interface PoolDayData {
   tvlUSD: string
 }
 
+export interface PoolMetrics {
+  /** Annualized fee yield (24h fees / TVL × 365), or null if unavailable. */
+  apy: number | null
+  /** USD-denominated TVL as of the subgraph's last indexed day, or null if unavailable. */
+  tvlUSD: number | null
+}
+
+const NULL_METRICS: PoolMetrics = { apy: null, tvlUSD: null }
+
 /**
- * Best-effort 24h-fees / TVL annualized estimate from the official Uniswap
- * subgraph. Only chains with a mapped `UNISWAP_V3_SUBGRAPH_ID` (currently Base
- * mainnet — Base Sepolia has no indexer serving one) return real data; this
- * returns null rather than a fabricated number whenever the chain has no
- * subgraph, the key is unset, the endpoint is unreachable, or has no rows.
+ * Best-effort 24h-fees / TVL read from the official Uniswap subgraph — one
+ * query serves both the APY estimate and the USD TVL. Only chains with a
+ * mapped `UNISWAP_V3_SUBGRAPH_ID` (currently Base mainnet — Base Sepolia has
+ * no indexer serving one) return real data; this returns nulls rather than a
+ * fabricated number whenever the chain has no subgraph, the key is unset, the
+ * endpoint is unreachable, or has no rows.
  */
-export async function fetchPoolApy(poolAddress: Address, chainId: number): Promise<number | null> {
+export async function fetchPoolMetrics(poolAddress: Address, chainId: number): Promise<PoolMetrics> {
   const subgraphId = UNISWAP_V3_SUBGRAPH_ID[chainId]
-  if (!subgraphId) return null
+  if (!subgraphId) return NULL_METRICS
 
   const apiKey = import.meta.env.VITE_THEGRAPH_API_KEY
-  if (!apiKey) return null
+  if (!apiKey) return NULL_METRICS
 
   const url = `https://gateway.thegraph.com/api/subgraphs/id/${subgraphId}`
   try {
@@ -106,16 +119,16 @@ export async function fetchPoolApy(poolAddress: Address, chainId: number): Promi
         query: `{ pool(id: "${poolAddress.toLowerCase()}") { poolDayData(first: 1, orderBy: date, orderDirection: desc) { feesUSD tvlUSD } } }`,
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) return NULL_METRICS
     const json = (await res.json()) as { data?: { pool?: { poolDayData?: PoolDayData[] } } }
     const day = json.data?.pool?.poolDayData?.[0]
-    if (!day) return null
+    if (!day) return NULL_METRICS
     const tvlUSD = Number(day.tvlUSD)
     const feesUSD = Number(day.feesUSD)
-    if (!Number.isFinite(tvlUSD) || tvlUSD <= 0 || !Number.isFinite(feesUSD)) return null
-    return (feesUSD / tvlUSD) * 365
+    if (!Number.isFinite(tvlUSD) || tvlUSD <= 0 || !Number.isFinite(feesUSD)) return NULL_METRICS
+    return { apy: (feesUSD / tvlUSD) * 365, tvlUSD }
   } catch {
-    return null
+    return NULL_METRICS
   }
 }
 
