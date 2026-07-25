@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Reproduces the Aqua / SwapVM encoding findings in spec/aqua-swapvm-encoding.md
+# Reproduces the Aqua / SwapVM encoding findings in spec/aqua/encoding.md
 # against a local Anvil fork of Base. Requires foundry (anvil, cast).
 #
 #   bash scripts/aqua-spike.sh

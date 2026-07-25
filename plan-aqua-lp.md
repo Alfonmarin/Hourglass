@@ -55,7 +55,7 @@ fork for automated tests.
 ## RESOLVED — the opcode risk is closed
 
 Task 0 ran on 2026-07-25 against an Anvil fork of Base. Full findings and a
-reproduction script: `spec/aqua-swapvm-encoding.md`, `scripts/aqua-spike.sh`.
+reproduction script: `spec/aqua/encoding.md`, `scripts/aqua-spike.sh`.
 
 Outcome: **the Blockscout-verified deployed source is authoritative**
 (`0x11` = `xycSwapXD`, `0x16` = `flatFeeAmountInXD`, `0x0d` = deadline,

@@ -7,7 +7,7 @@ import { AQUA_OPCODE, FEE_DENOMINATOR } from '../../config/aqua'
  * run loop. There is no jump table to fix up and no relocation — building one is
  * pure byte concatenation.
  *
- * See spec/aqua-swapvm-encoding.md for how the opcode numbers were established.
+ * See spec/aqua/encoding.md for how the opcode numbers were established.
  */
 
 /** An `argsLength` byte caps every instruction's arguments at 255 bytes. */

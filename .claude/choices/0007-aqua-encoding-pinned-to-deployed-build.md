@@ -85,7 +85,7 @@ mainnets, because only Base was verified.
 
 ## References
 
-- Encoding reference: `spec/aqua-swapvm-encoding.md`
+- Encoding reference: `spec/aqua/encoding.md`
 - Reproduction: `scripts/aqua-spike.sh`, `scripts/aqua-fork-check.ts`
 - Plan: `plan-aqua-lp.md`
 - Related rule: `.claude/rules/code.md`

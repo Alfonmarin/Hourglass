@@ -5,7 +5,7 @@ on an explicit decision (see `.claude/rules/workflow.md`).
 
 Current scope for reference: the Aqua page builds a constant-product AMM
 strategy — `[salt][flatFeeAmountIn][xycSwap]` — and ships it to Aqua. See
-`spec/aqua-swapvm-encoding.md` for the verified encoding and
+`spec/aqua/encoding.md` for the verified encoding and
 `.claude/choices/0007`/`0008` for the decisions behind it.
 
 ## Price-range selector — concentrated liquidity (2026-07-25)

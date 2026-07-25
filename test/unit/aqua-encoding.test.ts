@@ -4,7 +4,7 @@
  * later, at swap time, for whoever tries to trade against it. These tests pin
  * the encoding to fixtures captured from a live Anvil fork of Base, where the
  * hashes were confirmed against on-chain `SwapVM.hash()` and the programs were
- * confirmed by quoting real swaps (see spec/aqua-swapvm-encoding.md).
+ * confirmed by quoting real swaps (see spec/aqua/encoding.md).
  *
  * Run: bun test test/unit
  */

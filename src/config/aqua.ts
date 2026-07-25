@@ -6,7 +6,7 @@ import { base } from 'viem/chains'
  *
  * Base only, deliberately. Both contracts sit at the same address on twelve
  * mainnets, but the encoding below — the opcode table in particular — was
- * verified against the Base deployment only (see spec/aqua-swapvm-encoding.md).
+ * verified against the Base deployment only (see spec/aqua/encoding.md).
  * Opcodes are positions in a function table, not a stable enum, so a chain
  * running a different build would silently accept a program that ships fine and
  * reverts at swap time. Add a chain here only after re-running

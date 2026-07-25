@@ -151,6 +151,6 @@ hash. It is not exposed as a user-facing option.
 
 ## References
 
-- Encoding reference: `spec/aqua-swapvm-encoding.md`
+- Encoding reference: `spec/aqua/encoding.md`
 - Reproduction: `scripts/aqua-spike.sh`, `scripts/aqua-fork-check.ts`
 - Related ADR: `.claude/choices/0007-aqua-encoding-pinned-to-deployed-build.md`
