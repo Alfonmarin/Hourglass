@@ -482,7 +482,7 @@ export default function CreateStream() {
             <Segmented
               value={tokenMode}
               onChange={setTokenMode}
-              options={[{ key: 'whitelist', label: 'Safe tokens' }, { key: 'custom', label: 'Custom ERC-20' }]}
+              options={[{ key: 'whitelist', label: 'Available tokens' }, { key: 'custom', label: 'Custom ERC-20' }]}
             />
           }
         >
@@ -514,7 +514,7 @@ export default function CreateStream() {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-faint mt-1">Uniswap-vetted tokens held by this Safe on {chainName(safe.chainId)}.</p>
+              <p className="text-xs text-faint mt-1">Whitelisted by Uniswap for security, held by this Safe on {chainName(safe.chainId)}. Not listed? Add it via Custom ERC-20.</p>
             </div>
           )}
           {!useCustomToken && !safeTokens.loading && safeTokens.tokens.length === 0 && (

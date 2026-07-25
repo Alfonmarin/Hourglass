@@ -478,7 +478,7 @@ export default function CreateDelegation() {
             <Segmented
               value={tokenMode}
               onChange={setTokenMode}
-              options={[{ key: 'whitelist', label: 'Safe tokens' }, { key: 'custom', label: 'Custom ERC-20' }]}
+              options={[{ key: 'whitelist', label: 'Available tokens' }, { key: 'custom', label: 'Custom ERC-20' }]}
             />
           }
         >
@@ -508,7 +508,7 @@ export default function CreateDelegation() {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-faint mt-1">Uniswap-vetted tokens held by this Safe on {chainName(safe.chainId)}.</p>
+              <p className="text-xs text-faint mt-1">Whitelisted by Uniswap for security, held by this Safe on {chainName(safe.chainId)}. Not listed? Add it via Custom ERC-20.</p>
             </div>
           ) : (
             <p className="text-xs text-faint mt-1">No Uniswap-vetted tokens with a balance found in this Safe on {chainName(safe.chainId)}. Use a custom ERC-20 address instead.</p>
