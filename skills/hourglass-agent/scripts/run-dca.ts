@@ -83,6 +83,10 @@ interface Instruction {
   amountPerBuy: string
   frequency: string
   capPerSwap: string
+  /** Max price (funding per target). The min-received Increase bound enforces it
+   *  on-chain; the agent should also set the router's minimum-out to match so the
+   *  swap fails off-chain gracefully instead of reverting the redeem. May be null. */
+  maxPrice: string | null
 }
 
 // --- delegation hash (must match the repo exactly) ----------------------------
@@ -141,10 +145,10 @@ function decodeBalanceChangeTerms(terms: Hex): { enforceDecrease: boolean; token
   }
 }
 
-function findBalanceChangeCaveat(d: DelegationStruct, chainId: number): Caveat | null {
+function balanceChangeCaveats(d: DelegationStruct, chainId: number): Caveat[] {
   const enforcer = BALANCE_CHANGE_ENFORCER[chainId]?.toLowerCase()
-  if (!enforcer) return null
-  return d.caveats.find((c) => c.enforcer.toLowerCase() === enforcer) ?? null
+  if (!enforcer) return []
+  return d.caveats.filter((c) => c.enforcer.toLowerCase() === enforcer)
 }
 
 interface DiscoveredMandate { delegation: DelegationStruct; fundingToken: Address; capPerSwap: string; delegationHash: Hex }
@@ -173,11 +177,15 @@ async function discoverMandates(
       const doc = (await res.json()) as DelegationDocument
       const delegation = doc?.delegation
       if (!delegation?.delegate) continue
-      const caveat = findBalanceChangeCaveat(delegation, chainId)
-      if (!caveat) continue // not a strategy mandate on this chain
-      const { token, amount } = decodeBalanceChangeTerms(caveat.terms)
-      const decimals = await tokenDecimals(publicClient, token)
-      out.push({ delegation, fundingToken: token, capPerSwap: formatUnits(amount, decimals), delegationHash: computeDelegationHash(delegation) })
+      // A strategy mandate has one or two balance-change caveats: a Decrease on
+      // the funding token (the max-spend cap — its token IS the funding token),
+      // and optionally an Increase on the bought token (the price floor). Identify
+      // the funding token from the Decrease bound.
+      const bounds = balanceChangeCaveats(delegation, chainId).map((c) => decodeBalanceChangeTerms(c.terms))
+      const decrease = bounds.find((b) => b.enforceDecrease)
+      if (!decrease) continue // not a strategy mandate on this chain
+      const decimals = await tokenDecimals(publicClient, decrease.token)
+      out.push({ delegation, fundingToken: decrease.token, capPerSwap: formatUnits(decrease.amount, decimals), delegationHash: computeDelegationHash(delegation) })
     } catch { /* skip unreadable */ }
   }
   return out
