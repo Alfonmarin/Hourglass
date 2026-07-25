@@ -2,7 +2,7 @@
 
 **Recurring on-chain payment agreements for Safe treasuries. Sign once, get charged every period — capped on-chain, documented on IPFS, revocable at any time.**
 
-**Live:** [ourglass.intuition.box](https://ourglass.intuition.box/) — add it as a custom Safe App in your Safe.
+**Live:** [hourglass.box](https://hourglass.box/) — add it as a custom Safe App in your Safe.
 
 ## Why
 
@@ -101,7 +101,7 @@ The `DelegationManager` (`0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`) and the c
 - **Pinata** — IPFS pinning of agreement documents
 - **[Intuition](https://www.intuition.systems/)** — the knowledge graph signed delegations are published to (via a small [publisher service](server/README.md)) so receivers can discover them
 
-Signed agreements are stored client-side and can be exchanged directly as JSON files. They are also published to the Intuition graph so the receiver can discover them automatically — a **convenience layer, not a dependency**. The source of truth stays on-chain (the EIP-712 signature + the `DelegationManager`); both sides keep creating, signing, and charging even if the publisher or Intuition is down (manual import remains). See the [Discovery](https://ourglass.intuition.box/docs/concepts/discovery) docs.
+Signed agreements are stored client-side and can be exchanged directly as JSON files. They are also published to the Intuition graph so the receiver can discover them automatically — a **convenience layer, not a dependency**. The source of truth stays on-chain (the EIP-712 signature + the `DelegationManager`); both sides keep creating, signing, and charging even if the publisher or Intuition is down (manual import remains). See the [Discovery](https://hourglass.box/docs/concepts/discovery) docs.
 
 ## Getting started
 
@@ -155,3 +155,7 @@ The Delegation Framework contracts (DelegationManager, enforcers) are audited Me
 - [MetaMask Smart Accounts Kit](https://docs.metamask.io/smart-accounts/)
 - [Safe Apps SDK](https://docs.safe.global/apps-sdk-overview)
 - [Upstream project: osobot-ai/gator-safe-app](https://github.com/osobot-ai/gator-safe-app)
+
+## History
+
+- **2026-07-25 — Domain change.** The app moved from `ourglass.intuition.box` (a subdomain under the Intuition umbrella) to its own apex domain **`hourglass.box`**. All in-repo references — the Safe App manifest link, the publisher CORS allow-list (apex + `*.hourglass.box` preview wildcard), the Intuition `providedBy` URL, the pitch/verify pages, docs and env examples — were updated. References to the Intuition protocol itself (`intuition.box`) were intentionally left unchanged. Re-register the Safe App URL as `https://hourglass.box/` in Safe.

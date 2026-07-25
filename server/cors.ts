@@ -2,14 +2,14 @@
  * CORS origin allow-listing for the publisher backend. Pure + side-effect-free so
  * it is unit-testable (the server module itself starts Bun.serve on import).
  *
- * Patterns: exact origins (`https://ourglass.intuition.box`), `*` (any), or a
- * subdomain wildcard (`https://*.ourglass.intuition.box`) which matches every PR
+ * Patterns: exact origins (`https://hourglass.box`), `*` (any), or a
+ * subdomain wildcard (`https://*.hourglass.box`) which matches every PR
  * preview subdomain but not the apex. The default accepts the apex, all preview
  * subdomains, and local dev — so preview deployments work without per-PR config.
  */
 
 const DEFAULT_PATTERNS =
-  'https://ourglass.intuition.box,https://*.ourglass.intuition.box,http://localhost:5173'
+  'https://hourglass.box,https://*.hourglass.box,http://localhost:5173'
 
 export function parseAllowedOrigins(value: string | undefined): string[] {
   return (value ?? DEFAULT_PATTERNS)

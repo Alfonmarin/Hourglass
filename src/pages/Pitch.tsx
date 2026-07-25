@@ -179,12 +179,12 @@ function SlideDemo() {
     <div className="text-center">
       <Kicker>Live demo</Kicker>
       <a
-        href="https://ourglass.intuition.box/"
+        href="https://hourglass.box/"
         target="_blank"
         rel="noreferrer"
         className="mt-6 inline-flex items-center gap-3 text-3xl md:text-5xl font-extrabold tracking-tight text-ink hover:opacity-90 transition"
       >
-        ourglass.intuition.box
+        hourglass.box
         <IconExt size={28} style={{ color: 'var(--accent)' }} />
       </a>
       <ol className="mt-12 inline-flex flex-col items-start gap-4 text-left">
@@ -403,12 +403,12 @@ function SlideClose() {
       </h2>
       <div className="mt-10 flex flex-col md:flex-row items-center gap-3 md:gap-8">
         <a
-          href="https://ourglass.intuition.box/"
+          href="https://hourglass.box/"
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-2 text-sm text-dim hover:text-ink transition"
         >
-          <IconExt size={14} /> ourglass.intuition.box
+          <IconExt size={14} /> hourglass.box
         </a>
         <a
           href="https://github.com/intuition-box/OurGlass"

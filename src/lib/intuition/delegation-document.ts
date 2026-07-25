@@ -39,7 +39,7 @@ export interface DelegationDetails {
 /** The canonical atom title. Intentionally generic — no amount/period. */
 export const DELEGATION_DOCUMENT_NAME = 'OurGlass delegation'
 
-const DEFAULT_URL = 'https://ourglass.intuition.box/'
+const DEFAULT_URL = 'https://hourglass.box/'
 
 const KIND_LABEL: Record<DelegationKind, string> = {
   subscription: 'Subscription',

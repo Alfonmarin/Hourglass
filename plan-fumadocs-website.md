@@ -5,7 +5,7 @@
 Move the OurGlass public face into a Fumadocs project so we get docs + blog for
 free, while keeping the Safe App addable exactly as today.
 
-Target URLs, all on `ourglass.intuition.box` (unchanged Safe App registration):
+Target URLs, all on `hourglass.box` (unchanged Safe App registration):
 
 - `/` → landing page (now rendered by Fumadocs, OurGlass branding)
 - `/docs` → documentation (Fumadocs docs)

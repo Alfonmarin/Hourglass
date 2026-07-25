@@ -47,7 +47,7 @@ export default function Verify() {
       <div className="max-w-[760px] mx-auto px-5 py-10">
         <header className="flex items-center justify-between gap-4 mb-10">
           <Logo />
-          <a href="/" className="text-xs text-dim hover:text-ink transition">ourglass.intuition.box</a>
+          <a href="/" className="text-xs text-dim hover:text-ink transition">hourglass.box</a>
         </header>
 
         <div className="flex items-center gap-2.5 text-[color:var(--accent)] mb-3">
