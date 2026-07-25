@@ -155,6 +155,16 @@ export function findBalanceChangeCaveat(
   )
 }
 
+/**
+ * Whether the mandate carries a limitedCalls caveat — the marker of a limit order
+ * (a single price-triggered swap) versus a recurring DCA. Both carry a
+ * balance-change Decrease; only the limit order caps the redemption count.
+ */
+export function hasLimitedCalls(delegation: DelegationStruct, chainId: number): boolean {
+  const hourglass = getAddresses(chainId).hourglass?.limitedCallsEnforcer?.toLowerCase()
+  return hourglass !== undefined && delegation.caveats.some((c) => c.enforcer.toLowerCase() === hourglass)
+}
+
 export function periodFromSeconds(seconds: bigint): string {
   switch (seconds) {
     case 60n:
@@ -286,7 +296,8 @@ async function toStoredDelegation(
         ...common,
         scopeType: 'strategyMandate',
         status: 'signed',
-        strategyKind: 'dca',
+        // A limitedCalls cap marks a single-shot limit order; otherwise a DCA.
+        strategyKind: hasLimitedCalls(delegation, chainId) ? 'limitOrder' : 'dca',
         tokenAddress: token,
         capPerSwap: formatUnits(amount, decimals),
         enforceDecrease,
