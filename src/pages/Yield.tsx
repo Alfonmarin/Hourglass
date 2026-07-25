@@ -24,6 +24,23 @@ const DEADLINE_SECONDS = 3600
 
 type DelegateStep = 'idle' | 'preparing' | 'signing' | 'done'
 
+// The Safe parent window needs a moment to close/reset its sign-message modal
+// before it reliably opens the next one — firing signTypedMessage calls back
+// to back can leave that second request stuck with no visible prompt.
+const SIGN_SETTLE_MS = 800
+// Safety net so a genuinely stuck Safe-side modal fails loudly instead of
+// leaving the button on "Signing N of 3…" forever with no way to recover.
+const SIGN_TIMEOUT_MS = 120_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ])
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 export default function Yield() {
   const { sdk, safe } = useSafeAppsSDK()
   const { loading, error, pools } = useUniswapPools(safe.chainId)
@@ -122,12 +139,17 @@ export default function Yield() {
       const signatures: Hex[] = []
       for (let i = 0; i < yieldDelegations.length; i++) {
         setSigningIndex(i)
+        if (i > 0) await sleep(SIGN_SETTLE_MS)
         const typedData = buildDelegationTypedData(yieldDelegations[i].delegation, safe.chainId)
         // sdk.txs.signTypedMessage's parameter type doesn't match our EIP-712 typed-data
         // shape (same cast as the existing CreateDelegation.tsx signing flow); its
         // resolved value is likewise typed loosely by the SDK, narrowed to the two
         // fields this app actually reads off it.
-        const result = (await sdk.txs.signTypedMessage(typedData as never)) as { signature?: Hex; safeTxHash?: Hex }
+        const result = (await withTimeout(
+          sdk.txs.signTypedMessage(typedData as never),
+          SIGN_TIMEOUT_MS,
+          `Timed out waiting for signature ${i + 1} of ${yieldDelegations.length}. Check your wallet extension for a pending request, or the Safe app's Messages tab, then try again.`,
+        )) as { signature?: Hex; safeTxHash?: Hex }
         // Both fields are already hex strings from the SDK; '0x' is the empty-signature fallback.
         signatures.push((result?.signature || result?.safeTxHash || '0x') as Hex)
       }
