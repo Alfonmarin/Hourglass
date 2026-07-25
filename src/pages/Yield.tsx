@@ -9,7 +9,7 @@ import { getEnvironment } from '../lib/environment'
 import { getAddresses } from '../config/addresses'
 import { DeleGatorModuleFactoryABI } from '../config/abis'
 import { DEFAULT_SALT } from '../lib/module'
-import { findChain, rpcUrl } from '../config/supported-chains'
+import { findChain, rpcUrl, chainName } from '../config/supported-chains'
 import type { PoolInfo } from '../lib/uniswapDiscovery'
 import { Card, Btn, Mono, CopyChip } from '../ui/components'
 import { Block, Field } from '../ui/form'
@@ -188,8 +188,8 @@ export default function Yield() {
       <div className="mb-6">
         <h1 className="text-2xl font-extrabold tracking-tight text-ink">Yield</h1>
         <p className="text-dim text-sm mt-1">
-          Real Uniswap v3 pools on Base Sepolia, ranked by fee APY and depth. Depositing needs both tokens in the Safe
-          already and a signed delegation the agent redeems on its own.
+          Real Uniswap v3 pools on {chainName(safe.chainId)}, ranked by fee APY and depth. Depositing needs both tokens
+          in the Safe already and a signed delegation the agent redeems on its own.
         </p>
       </div>
 

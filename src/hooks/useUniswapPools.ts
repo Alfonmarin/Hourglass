@@ -34,7 +34,7 @@ export function useUniswapPools(chainId: number): UniswapPools {
       const client = createPublicClient({ chain, transport: http(rpcUrl(chainId)) }) as PublicClient
       const found = await discoverPools(client, chainId)
       const withApy = await Promise.all(
-        found.map(async (pool) => ({ ...pool, apy: await fetchPoolApy(pool.poolAddress) })),
+        found.map(async (pool) => ({ ...pool, apy: await fetchPoolApy(pool.poolAddress, chainId) })),
       )
       if (!cancelled) setState({ loading: false, error: null, pools: rankPools(withApy) })
     })().catch((e) => {

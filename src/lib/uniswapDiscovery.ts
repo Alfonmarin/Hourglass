@@ -1,6 +1,6 @@
 import { erc20Abi, zeroAddress, type Address, type PublicClient } from 'viem'
 import { UniswapV3FactoryABI, UniswapV3PoolABI } from '../config/abis'
-import { UNISWAP_V3_FACTORY, FEE_TIERS, CANDIDATE_TOKENS, type CandidateToken } from '../config/uniswap'
+import { UNISWAP_V3_FACTORY, UNISWAP_V3_SUBGRAPH_ID, FEE_TIERS, CANDIDATE_TOKENS, type CandidateToken } from '../config/uniswap'
 
 export interface PoolInfo {
   poolAddress: Address
@@ -82,21 +82,25 @@ interface PoolDayData {
 
 /**
  * Best-effort 24h-fees / TVL annualized estimate from the official Uniswap
- * subgraph. Base Sepolia has thin real trading, so an empty/missing result is
- * the expected common case — this returns null rather than a fabricated
- * number whenever the endpoint isn't configured, unreachable, or has no rows.
+ * subgraph. Only chains with a mapped `UNISWAP_V3_SUBGRAPH_ID` (currently Base
+ * mainnet — Base Sepolia has no indexer serving one) return real data; this
+ * returns null rather than a fabricated number whenever the chain has no
+ * subgraph, the key is unset, the endpoint is unreachable, or has no rows.
  */
-export async function fetchPoolApy(poolAddress: Address): Promise<number | null> {
-  const url = import.meta.env.VITE_UNISWAP_SUBGRAPH_URL
-  if (!url) return null
+export async function fetchPoolApy(poolAddress: Address, chainId: number): Promise<number | null> {
+  const subgraphId = UNISWAP_V3_SUBGRAPH_ID[chainId]
+  if (!subgraphId) return null
 
   const apiKey = import.meta.env.VITE_THEGRAPH_API_KEY
+  if (!apiKey) return null
+
+  const url = `https://gateway.thegraph.com/api/subgraphs/id/${subgraphId}`
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         query: `{ pool(id: "${poolAddress.toLowerCase()}") { poolDayData(first: 1, orderBy: date, orderDirection: desc) { feesUSD tvlUSD } } }`,

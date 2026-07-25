@@ -26,6 +26,19 @@ export const UNIVERSAL_ROUTER: Record<number, Address> = {
   [base.id]: '0x6fF5693b99212Da76ad316178A184AB56D299b43',
 }
 
+/**
+ * The Graph subgraph id for Uniswap v3, per chain — feeds the Yield page's APY
+ * estimate (`fetchPoolApy`). Only a chain with real trading activity has a
+ * subgraph indexers actually serve; Base Sepolia does not (checked against The
+ * Graph's explorer: the only two Base-Sepolia-labeled subgraphs there are either
+ * mislabeled — indexing Arbitrum Sepolia — or years-stale with zero curation
+ * signal), so it's intentionally left unmapped rather than pointed at a dead
+ * endpoint. `fetchPoolApy` returns null for any chain missing here.
+ */
+export const UNISWAP_V3_SUBGRAPH_ID: Record<number, string> = {
+  [base.id]: 'FUbEPQw1oMghy39fwWBFY5fE6MXPXZQtjncQy2cXdrNS',
+}
+
 /** The three standard Uniswap v3 fee tiers, in hundredths of a bip. */
 export const FEE_TIERS = [500, 3000, 10000] as const
 
