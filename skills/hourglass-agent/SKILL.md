@@ -51,8 +51,9 @@ Do these in order. Steps 1–3 are one-time setup; steps 5–6 repeat on the man
 cadence.
 
 1. **Install dependencies.** `bun add viem @metamask/smart-accounts-kit`. Install
-   the Uniswap **swap-integration** skill (it builds the swap calldata). Confirm
-   you have a Uniswap Trading API key — see `references/execution-dca.md`.
+   the Uniswap **swap-integration** skill (it builds the swap calldata). Get a Uniswap
+   Trading API key from the developer hub (**https://hub.uniswap.org/**) — the full
+   walkthrough is in `references/setup.md`.
 2. **Create the agent wallet.** Generate a fresh keypair and record the address.
    `cast wallet new` (foundry), or the viem snippet in `references/setup.md`. Keep
    the private key secret; it only ever pays gas.

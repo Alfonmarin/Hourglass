@@ -11,8 +11,27 @@ bun add viem @metamask/smart-accounts-kit
 ```
 
 Also install the Uniswap **swap-integration** skill (it builds the swap calldata
-the agent redeems). And get a **Uniswap Trading API key** from the Uniswap developer
-portal — it is passed as the `x-api-key` header, agent-side only.
+the agent redeems).
+
+### Get a Uniswap Trading API key
+
+The runner quotes and builds swaps through the **Uniswap Trading API**, which
+requires an API key sent as the `x-api-key` header. It is **agent-side only** —
+never shipped to a browser, never committed.
+
+1. Go to the Uniswap developer hub: **https://hub.uniswap.org/** (redirects to the
+   Trading API docs / developer portal). The Trading API reference lives at
+   https://docs.uniswap.org/api/trading/overview.
+2. Sign in and open the developer dashboard, then create / request an API key for
+   the **Trading API** (the same key powers `/check_approval`, `/quote`, `/swap`).
+   Access may be self-serve or gated behind a request — follow the portal's flow;
+   if you hit a "request access" step, submit it and wait for the grant.
+3. Copy the key and set it as `UNISWAP_API_KEY` in the agent's environment (step
+   below). Verify it works before signing anything: a `/quote` that returns HTTP
+   401/403 means the key is missing, wrong, or not yet activated.
+
+If you don't have a key yet, you can still do steps 2–4 here (wallet + funding);
+you only need the key at execution time (`discovery.md` / the execution refs).
 
 ## 2. Create the agent wallet
 
