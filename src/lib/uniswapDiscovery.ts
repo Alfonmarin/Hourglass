@@ -123,16 +123,27 @@ export async function fetchPoolMetrics(poolAddress: Address, chainId: number): P
         query: `{ liquidityPool(id: "${poolAddress.toLowerCase()}") { totalValueLockedUSD dailySnapshots(first: 1, orderBy: day, orderDirection: desc) { dailySupplySideRevenueUSD } } }`,
       }),
     })
-    if (!res.ok) return NULL_METRICS
-    const json = (await res.json()) as { data?: { liquidityPool?: LiquidityPoolQueryResult } }
+    if (!res.ok) {
+      console.error('[fetchPoolMetrics] HTTP', res.status, await res.text())
+      return NULL_METRICS
+    }
+    const json = (await res.json()) as { data?: { liquidityPool?: LiquidityPoolQueryResult }; errors?: unknown }
+    if (json.errors) {
+      console.error('[fetchPoolMetrics] GraphQL errors', json.errors)
+      return NULL_METRICS
+    }
     const lp = json.data?.liquidityPool
-    if (!lp) return NULL_METRICS
+    if (!lp) {
+      console.error('[fetchPoolMetrics] no liquidityPool for', poolAddress, json)
+      return NULL_METRICS
+    }
     const tvlUSD = Number(lp.totalValueLockedUSD)
     if (!Number.isFinite(tvlUSD) || tvlUSD <= 0) return NULL_METRICS
     const dailyRevenueUSD = Number(lp.dailySnapshots?.[0]?.dailySupplySideRevenueUSD)
     const apy = Number.isFinite(dailyRevenueUSD) && dailyRevenueUSD >= 0 ? (dailyRevenueUSD / tvlUSD) * 365 : null
     return { apy, tvlUSD }
-  } catch {
+  } catch (err) {
+    console.error('[fetchPoolMetrics] fetch threw', err)
     return NULL_METRICS
   }
 }

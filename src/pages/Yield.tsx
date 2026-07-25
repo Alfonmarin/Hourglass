@@ -17,7 +17,6 @@ import { IconTrend, IconAlert, IconCheck } from '../ui/icons'
 
 const feeLabel = (fee: number) => `${(fee / 10_000).toFixed(2)}%`
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
-const usdCompact = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
 
 // A signed delegation grants a real permission; keep the window it stays
 // redeemable short rather than open-ended.
@@ -68,18 +67,18 @@ export default function Yield() {
       return
     }
     let cancelled = false
-    ;(async () => {
-      const chain = findChain(safe.chainId)
-      if (!chain) return
-      const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
-      // safe.safeAddress from the Safe Apps SDK is typed as a plain string, not viem's Address.
-      const safeAddress = safe.safeAddress as Address
-      const [token0, token1] = await Promise.all([
-        client.readContract({ address: pool.token0.address, abi: erc20Abi, functionName: 'balanceOf', args: [safeAddress] }),
-        client.readContract({ address: pool.token1.address, abi: erc20Abi, functionName: 'balanceOf', args: [safeAddress] }),
-      ])
-      if (!cancelled) setBalances({ token0, token1 })
-    })()
+      ; (async () => {
+        const chain = findChain(safe.chainId)
+        if (!chain) return
+        const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+        // safe.safeAddress from the Safe Apps SDK is typed as a plain string, not viem's Address.
+        const safeAddress = safe.safeAddress as Address
+        const [token0, token1] = await Promise.all([
+          client.readContract({ address: pool.token0.address, abi: erc20Abi, functionName: 'balanceOf', args: [safeAddress] }),
+          client.readContract({ address: pool.token1.address, abi: erc20Abi, functionName: 'balanceOf', args: [safeAddress] }),
+        ])
+        if (!cancelled) setBalances({ token0, token1 })
+      })()
     return () => {
       cancelled = true
     }
@@ -244,10 +243,7 @@ export default function Yield() {
                 <div className="text-right shrink-0">
                   <div className="font-mono text-sm text-ink tnum">{p.apy !== null ? `${(p.apy * 100).toFixed(1)}% APY` : 'insufficient data'}</div>
                   <div className="text-[11px] text-faint mt-0.5">
-                    TVL{' '}
-                    {p.tvlUSD !== null
-                      ? usdCompact.format(p.tvlUSD)
-                      : `${formatUnits(p.tvlToken0, p.token0.decimals)} ${p.token0.symbol} + ${formatUnits(p.tvlToken1, p.token1.decimals)} ${p.token1.symbol}`}
+                    {formatUnits(p.tvlToken0, p.token0.decimals)} {p.token0.symbol} + {formatUnits(p.tvlToken1, p.token1.decimals)} {p.token1.symbol}
                   </div>
                 </div>
               </Card>
@@ -280,63 +276,63 @@ export default function Yield() {
           )}
 
           <div className={agentValid ? 'space-y-4' : 'space-y-4 opacity-40 pointer-events-none select-none'} aria-disabled={!agentValid}>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={`${pool.token0.symbol} amount`} required missing={amount0Raw > 0n && !hasBalance0}>
-              <input
-                value={amount0}
-                onChange={(e) => setAmount0(e.target.value)}
-                placeholder="0.00"
-                aria-label={`${pool.token0.symbol} amount`}
-                className={`font-mono ${amount0Raw > 0n && !hasBalance0 ? 'ring-1 ring-danger' : ''}`}
-              />
-              {balances && (
-                <p className="text-xs text-faint mt-1">
-                  Safe holds {formatUnits(balances.token0, pool.token0.decimals)} {pool.token0.symbol}
-                </p>
-              )}
-            </Field>
-            <Field label={`${pool.token1.symbol} amount`} required missing={amount1Raw > 0n && !hasBalance1}>
-              <input
-                value={amount1}
-                onChange={(e) => setAmount1(e.target.value)}
-                placeholder="0.00"
-                aria-label={`${pool.token1.symbol} amount`}
-                className={`font-mono ${amount1Raw > 0n && !hasBalance1 ? 'ring-1 ring-danger' : ''}`}
-              />
-              {balances && (
-                <p className="text-xs text-faint mt-1">
-                  Safe holds {formatUnits(balances.token1, pool.token1.decimals)} {pool.token1.symbol}
-                </p>
-              )}
-            </Field>
-          </div>
-
-          {planError && (
-            <div className="flex items-center gap-2 text-pending text-sm">
-              <IconAlert size={16} /> {planError}
+            <div className="grid grid-cols-2 gap-4">
+              <Field label={`${pool.token0.symbol} amount`} required missing={amount0Raw > 0n && !hasBalance0}>
+                <input
+                  value={amount0}
+                  onChange={(e) => setAmount0(e.target.value)}
+                  placeholder="0.00"
+                  aria-label={`${pool.token0.symbol} amount`}
+                  className={`font-mono ${amount0Raw > 0n && !hasBalance0 ? 'ring-1 ring-danger' : ''}`}
+                />
+                {balances && (
+                  <p className="text-xs text-faint mt-1">
+                    Safe holds {formatUnits(balances.token0, pool.token0.decimals)} {pool.token0.symbol}
+                  </p>
+                )}
+              </Field>
+              <Field label={`${pool.token1.symbol} amount`} required missing={amount1Raw > 0n && !hasBalance1}>
+                <input
+                  value={amount1}
+                  onChange={(e) => setAmount1(e.target.value)}
+                  placeholder="0.00"
+                  aria-label={`${pool.token1.symbol} amount`}
+                  className={`font-mono ${amount1Raw > 0n && !hasBalance1 ? 'ring-1 ring-danger' : ''}`}
+                />
+                {balances && (
+                  <p className="text-xs text-faint mt-1">
+                    Safe holds {formatUnits(balances.token1, pool.token1.decimals)} {pool.token1.symbol}
+                  </p>
+                )}
+              </Field>
             </div>
-          )}
 
-          {step === 'done' && storedPlan ? (
-            <div className="rounded-xl glass-soft ring-1 ring-line p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-active">
-                <IconCheck size={16} /> Plan signed — 3 delegations ready for the agent.
+            {planError && (
+              <div className="flex items-center gap-2 text-pending text-sm">
+                <IconAlert size={16} /> {planError}
               </div>
-              <div className="text-xs text-dim">
-                Agent wallet: <Mono>{short(storedPlan.agentAddress)}</Mono>
+            )}
+
+            {step === 'done' && storedPlan ? (
+              <div className="rounded-xl glass-soft ring-1 ring-line p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-active">
+                  <IconCheck size={16} /> Plan signed — 3 delegations ready for the agent.
+                </div>
+                <div className="text-xs text-dim">
+                  Agent wallet: <Mono>{short(storedPlan.agentAddress)}</Mono>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Btn kind="primary" onClick={downloadPlan}>
+                    Download plan.json
+                  </Btn>
+                  <CopyChip value={JSON.stringify(storedPlan)} label="Copy plan JSON" />
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Btn kind="primary" onClick={downloadPlan}>
-                  Download plan.json
-                </Btn>
-                <CopyChip value={JSON.stringify(storedPlan)} label="Copy plan JSON" />
-              </div>
-            </div>
-          ) : (
-            <Btn kind="primary" size="lg" onClick={handleDelegate} disabled={!canDelegate || step !== 'idle'}>
-              {step === 'preparing' ? 'Preparing…' : step === 'signing' ? `Signing ${signingIndex + 1} of 3…` : 'Sign delegations'}
-            </Btn>
-          )}
+            ) : (
+              <Btn kind="primary" size="lg" onClick={handleDelegate} disabled={!canDelegate || step !== 'idle'}>
+                {step === 'preparing' ? 'Preparing…' : step === 'signing' ? `Signing ${signingIndex + 1} of 3…` : 'Sign delegations'}
+              </Btn>
+            )}
           </div>
         </Block>
       )}
