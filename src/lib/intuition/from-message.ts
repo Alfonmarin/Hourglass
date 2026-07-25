@@ -7,6 +7,8 @@ import {
   decodePeriodTransferTerms,
   findStreamingCaveat,
   decodeStreamingTerms,
+  findBalanceChangeCaveat,
+  decodeBalanceChangeTerms,
   periodFromSeconds,
 } from './discover'
 import type { DelegationDetails } from './delegation-document'
@@ -149,6 +151,16 @@ export function detailsFromDelegation(
       period: 'month',
     }
   }
+  const dca = findBalanceChangeCaveat(delegation, chainId)
+  if (dca) {
+    const { amount } = decodeBalanceChangeTerms(dca.terms)
+    return {
+      kind: 'dca',
+      amount: formatUnits(amount, token.decimals),
+      tokenSymbol: token.symbol,
+      period: 'swap',
+    }
+  }
   return null
 }
 
@@ -158,5 +170,7 @@ export function tokenFromDelegation(delegation: DelegationStruct, chainId: numbe
   if (sub) return decodePeriodTransferTerms(sub.terms).token
   const stream = findStreamingCaveat(delegation, chainId)
   if (stream) return decodeStreamingTerms(stream.terms).token
+  const dca = findBalanceChangeCaveat(delegation, chainId)
+  if (dca) return decodeBalanceChangeTerms(dca.terms).token
   return null
 }
