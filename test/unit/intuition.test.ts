@@ -129,7 +129,7 @@ describe('delegation document', () => {
 
   test('name is generic — carries no amount/period', () => {
     const doc = buildDelegationDocument({ delegation, details })
-    expect(doc.name).toBe('OurGlass delegation')
+    expect(doc.name).toBe('Hourglass delegation')
     expect(doc.name).toBe(DELEGATION_DOCUMENT_NAME)
     expect(doc.name).not.toMatch(/USDC|month|\d/)
   })

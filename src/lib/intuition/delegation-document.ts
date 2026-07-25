@@ -23,16 +23,20 @@ export interface DelegationDocument {
   delegation: DelegationStruct
 }
 
-/** A periodic-cap subscription (erc20PeriodTransfer) or an accruing stream (erc20Streaming). */
-export type DelegationKind = 'subscription' | 'stream'
+/**
+ * A periodic-cap subscription (erc20PeriodTransfer), an accruing stream
+ * (erc20Streaming), or a strategy mandate (erc20BalanceChange — a per-swap spend
+ * cap for an agent, e.g. DCA / range).
+ */
+export type DelegationKind = 'subscription' | 'stream' | 'dca'
 
 export interface DelegationDetails {
   kind: DelegationKind
-  /** Human amount per period, e.g. "300". */
+  /** Human amount — per period for subscription/stream, per swap for dca. e.g. "300". */
   amount: string
   /** Token ticker, e.g. "USDC". */
   tokenSymbol: string
-  /** Human period noun, e.g. "month". */
+  /** Human period noun, e.g. "month"; "swap" for a per-swap dca cap. */
   period: string
 }
 
@@ -44,11 +48,13 @@ const DEFAULT_URL = 'https://hourglass.box/'
 const KIND_LABEL: Record<DelegationKind, string> = {
   subscription: 'Subscription',
   stream: 'Stream',
+  dca: 'Strategy',
 }
 
 const KIND_ENFORCER: Record<DelegationKind, string> = {
   subscription: 'erc20PeriodTransfer',
   stream: 'erc20Streaming',
+  dca: 'erc20BalanceChange',
 }
 
 /** Cap on the derived amount string — a token with absurd `decimals` can make
@@ -65,7 +71,12 @@ const AMOUNT_MAX_CHARS = 40
 export function describeDelegation(details: DelegationDetails): string {
   const symbol = cleanDisplayText(details.tokenSymbol, SYMBOL_MAX_CHARS)
   const amount = cleanDisplayText(details.amount, AMOUNT_MAX_CHARS)
-  return `${KIND_LABEL[details.kind]} delegation using the ${KIND_ENFORCER[details.kind]} enforcer for an amount of ${amount} ${symbol} / ${details.period}.`
+  const enforcer = KIND_ENFORCER[details.kind]
+  if (details.kind === 'dca') {
+    // A strategy mandate bounds the loss per swap, not an amount per period.
+    return `${KIND_LABEL[details.kind]} delegation using the ${enforcer} enforcer with a cap of ${amount} ${symbol} per ${details.period}.`
+  }
+  return `${KIND_LABEL[details.kind]} delegation using the ${enforcer} enforcer for an amount of ${amount} ${symbol} / ${details.period}.`
 }
 
 export function buildDelegationDocument(params: {

@@ -1,0 +1,33 @@
+---
+title: Agent investment
+description: Delegate a bounded investment strategy to an autonomous agent — non-custodial, capped on-chain, run from your Safe.
+icon: Bot
+---
+
+**Agent investment** lets a Safe delegate a recurring investment strategy — today,
+dollar-cost averaging (DCA) — to an autonomous agent, without ever handing over the
+keys or the treasury.
+
+The Safe signs **one** mandate. An agent then runs the strategy on the Safe's
+behalf, bounded on-chain by a per-swap cap it can never exceed. The treasury stays
+in the Safe; the agent only triggers the swaps and pays gas.
+
+> Strategies are software. Guardrails are consensus.
+
+## How it fits together
+
+| Layer | Who | What |
+|---|---|---|
+| **The mandate** | the Safe (multisig) | one signed delegation: what the agent may do, capped per swap |
+| **The strategy** | the agent (off-chain) | when and how much to buy — the operator's instruction |
+| **The guardrail** | the caveat (on-chain) | the hard limit the contract enforces on every swap |
+
+## Read next
+
+- [Strategies](/docs/agent-investment/strategies) — what a strategy mandate is, and
+  why it bounds the balance change rather than the calldata.
+- [Getting started](/docs/agent-investment/getting-started) — set up and run the
+  agent that executes the mandate.
+
+The agent side can be fully automated with the **Hourglass agent skill**, which
+guides an LLM agent through the whole flow.

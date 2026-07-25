@@ -1,5 +1,5 @@
 import { type Address } from 'viem'
-import { base, baseSepolia } from 'viem/chains'
+import { mainnet, base, baseSepolia } from 'viem/chains'
 import { USDC_ADDRESS } from './supported-chains'
 
 /** Uniswap v3 Factory, per chain. */
@@ -12,6 +12,18 @@ export const UNISWAP_V3_FACTORY: Record<number, Address> = {
 export const UNISWAP_V3_POSITION_MANAGER: Record<number, Address> = {
   [base.id]: '0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1',
   [baseSepolia.id]: '0x27F971cb582BF9E50F397e4d29a5C7A34f11faA2',
+}
+
+/**
+ * Uniswap Universal Router, per chain — the swap target a strategy mandate
+ * whitelists (with the `execute(bytes,bytes[],uint256)` selector). The Trading
+ * API returns this as `swap.to` under CLASSIC routing. Only prod chains are wired
+ * (verified addresses); add a testnet router here once its address is confirmed.
+ * Never use the deprecated v1 router 0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD.
+ */
+export const UNIVERSAL_ROUTER: Record<number, Address> = {
+  [mainnet.id]: '0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af',
+  [base.id]: '0x6fF5693b99212Da76ad316178A184AB56D299b43',
 }
 
 /** The three standard Uniswap v3 fee tiers, in hundredths of a bip. */
