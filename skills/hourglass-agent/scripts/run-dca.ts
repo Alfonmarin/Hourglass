@@ -57,7 +57,9 @@ const INTUITION: Record<'mainnet' | 'testnet', ReadConfig> = {
   },
   mainnet: {
     graphqlUrl: 'https://mainnet.intuition.sh/v1/graphql',
-    delegateTo: '0xb56980d42a3b03455bf41ea20fe04ae223fca0b9e688994dc661414e81e6433b',
+    // Mainnet "delegate to" is a distinct atom from testnet's — verified against the
+    // live graph (the testnet id 0xb569… returns zero triples on mainnet).
+    delegateTo: '0xc587d8f586380d2252d01784a3b6b889a50f960af80cc0d8acb4dbd3e2c2c1f5',
     inContextOf: '0x892054b01d389bfe566166120470f572a56e3d4cd88c599b52c4708949625390',
   },
 }
