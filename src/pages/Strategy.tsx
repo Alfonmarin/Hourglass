@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
 import { createPublicClient, http, isAddress, parseUnits, type Address, type Hex } from 'viem'
+import { readErc20Meta } from '../lib/erc20'
 import { useSafeTokens } from '../hooks/useSafeTokens'
 import { useWhitelistedTokens } from '../hooks/useWhitelistedTokens'
 import type { HeldToken } from '../lib/safe-balances'
@@ -39,10 +40,13 @@ export default function Strategy() {
   const [tokenMode, setTokenMode] = useState<'whitelist' | 'custom'>('whitelist')
   const [selectedToken, setSelectedToken] = useState<HeldToken | null>(null)
   const [customToken, setCustomToken] = useState('')
+  // Resolved decimals for a custom funding token (read on-chain — never assumed).
+  const [customFundingDecimals, setCustomFundingDecimals] = useState<number | null>(null)
   // Buy token (the swap output — from the full whitelist, not held yet).
   const [buyMode, setBuyMode] = useState<'whitelist' | 'custom'>('whitelist')
   const [selectedBuy, setSelectedBuy] = useState<WhitelistedToken | null>(null)
   const [customBuy, setCustomBuy] = useState('')
+  const [customBuyDecimals, setCustomBuyDecimals] = useState<number | null>(null)
   const [buyAmount, setBuyAmount] = useState('')
   const [frequency, setFrequency] = useState<Frequency>('weekly')
   // Guardrail (the on-chain guarantees — the caveats enforce these).
@@ -60,13 +64,39 @@ export default function Strategy() {
   const useCustom = tokenMode === 'custom'
   const fundingAddress = useCustom ? customToken : (selectedToken?.address ?? '')
   const fundingSymbol = useCustom ? 'tokens' : (selectedToken?.symbol ?? 'token')
-  const decimals = useCustom ? 18 : (selectedToken?.decimals ?? 6)
-
   const useCustomBuy = buyMode === 'custom'
   const targetToken = useCustomBuy ? customBuy : (selectedBuy?.address ?? '')
 
-  const capRaw = (() => { try { return cap ? parseUnits(cap, decimals) : 0n } catch { return 0n } })()
-  const targetDecimals = selectedBuy?.decimals ?? 18
+  // Resolve a custom token's decimals on-chain — never assume. `null` = not yet
+  // resolved (or unreadable), in which case amounts stay unset rather than wrong.
+  useEffect(() => {
+    if (!useCustom || !isAddress(customToken)) { setCustomFundingDecimals(null); return }
+    const chain = findChain(safe.chainId); if (!chain) return
+    const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+    let cancelled = false
+    readErc20Meta(client, customToken as Address)
+      .then((m) => { if (!cancelled) setCustomFundingDecimals(m.decimals) })
+      .catch(() => { if (!cancelled) setCustomFundingDecimals(null) })
+    return () => { cancelled = true }
+  }, [useCustom, customToken, safe.chainId])
+
+  useEffect(() => {
+    if (!useCustomBuy || !isAddress(customBuy)) { setCustomBuyDecimals(null); return }
+    const chain = findChain(safe.chainId); if (!chain) return
+    const client = createPublicClient({ chain, transport: http(rpcUrl(safe.chainId)) })
+    let cancelled = false
+    readErc20Meta(client, customBuy as Address)
+      .then((m) => { if (!cancelled) setCustomBuyDecimals(m.decimals) })
+      .catch(() => { if (!cancelled) setCustomBuyDecimals(null) })
+    return () => { cancelled = true }
+  }, [useCustomBuy, customBuy, safe.chainId])
+
+  // Decimals: known from the whitelist token, or resolved on-chain for a custom
+  // one. `null` for an unresolved custom token — amounts then stay 0 (not wrong).
+  const decimals = useCustom ? customFundingDecimals : (selectedToken?.decimals ?? null)
+  const targetDecimals = useCustomBuy ? customBuyDecimals : (selectedBuy?.decimals ?? null)
+
+  const capRaw = (() => { try { return cap && decimals !== null ? parseUnits(cap, decimals) : 0n } catch { return 0n } })()
 
   // Min received (raw, target units) = capSpend / maxPrice. The swap must return
   // at least this much of the bought token, so it only clears when the effective
@@ -74,7 +104,7 @@ export default function Strategy() {
   const minReceivedRaw = (() => {
     const spend = parseFloat(cap)
     const price = parseFloat(maxPrice)
-    if (!(spend > 0) || !(price > 0)) return 0n
+    if (!(spend > 0) || !(price > 0) || targetDecimals === null) return 0n
     try { return parseUnits((spend / price).toFixed(targetDecimals), targetDecimals) } catch { return 0n }
   })()
 
