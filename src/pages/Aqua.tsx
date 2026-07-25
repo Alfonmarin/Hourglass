@@ -282,10 +282,10 @@ export default function Aqua() {
             }
           >
             <p className="text-xs text-dim -mt-1 leading-relaxed">
-              Every swap spends allowance, and unlike the balance it is not replenished by fees — an exact approval runs
-              out after roughly one turnover and the strategy stops filling. Headroom buys about{' '}
-              {APPROVAL_HEADROOM_MULTIPLIER.toString()} turnovers before a top-up is needed. Either way the amount is
-              bounded and visible; it is never unlimited.
+              A swap spends the approval of the token it takes out, and never gives it back — tokens arriving from
+              swaps, fees included, sit outside the approval. So an exact approval runs out after roughly one turnover
+              and the strategy stops filling. Headroom buys about {APPROVAL_HEADROOM_MULTIPLIER.toString()} turnovers
+              before a top-up is needed. Either way the amount is bounded and visible; it is never unlimited.
             </p>
             {token0 && token1 && amount0Raw > 0n && amount1Raw > 0n && (
               <div className="space-y-1">

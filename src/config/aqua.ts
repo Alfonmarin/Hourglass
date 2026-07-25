@@ -53,12 +53,20 @@ export const FEE_DENOMINATOR = 1_000_000_000
 /**
  * How much allowance to leave above the shipped amount, when headroom is on.
  *
- * Every `pull()` spends allowance, and unlike the balance it does not grow back
- * from fees — so an approval set to exactly the shipped size is consumed after
- * roughly one turnover of the position, and the strategy stops filling until the
- * Safe tops it up. A multiple buys that many turnovers of unattended operation
- * while keeping the exposure bounded and legible, which `type(uint256).max`
- * would not.
+ * A swap spends the allowance of the token it pulls *out* — Aqua calls
+ * `transferFrom(maker, …)` for that leg — and leaves the incoming leg's
+ * allowance alone, since `push()` spends the taker's allowance instead. So an
+ * allowance only ever falls, and is consumed by a token's gross outflow rather
+ * than its net flow: in a two-way market both legs drain even while the
+ * balances hold steady. Tokens arriving from swaps, fees included, land outside
+ * the approval entirely.
+ *
+ * An approval set to exactly the shipped size therefore runs out after roughly
+ * one turnover, and the strategy stops filling until the Safe tops it up. A
+ * multiple buys that many turnovers of unattended operation while keeping the
+ * exposure bounded and legible, which `type(uint256).max` would not.
+ *
+ * Measured on a Base fork; asserted by `scripts/aqua-fork-check.ts`.
  */
 export const APPROVAL_HEADROOM_MULTIPLIER = 10n
 

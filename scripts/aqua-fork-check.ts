@@ -42,10 +42,13 @@ const USDC_BALANCE_SLOT = 9n
 
 // Anvil's deterministic account 0, standing in for the Safe.
 const account = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80')
+// Account 1 plays the taker, so a real swap can be executed against the strategy.
+const taker = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
 
 const SWAPVM_ABI = parseAbi([
   'function quote((address maker, uint256 traits, bytes data) order, address tokenIn, address tokenOut, uint256 amount, bytes takerTraitsAndData) returns (uint256 amountIn, uint256 amountOut, bytes32 orderHash)',
   'function hash((address maker, uint256 traits, bytes data) order) view returns (bytes32)',
+  'function swap((address maker, uint256 traits, bytes data) order, address tokenIn, address tokenOut, uint256 amount, bytes takerTraitsAndData) returns (uint256 amountIn, uint256 amountOut, bytes32 orderHash)',
 ])
 
 // 18 bytes of slice indexes then 2 bytes of flags; IS_EXACT_IN only.
@@ -99,14 +102,16 @@ async function main() {
   })
   await fundUsdc(account.address, amount1)
 
-  // Captured after funding: the whole point is that ship/quote/dock leave this
-  // untouched. Comparing against a constant would break on a reused fork.
+  // Baselines captured after funding. Every assertion below is a delta against
+  // these, so the script is idempotent: a fork carrying state from an earlier
+  // run (or from manual poking) still gives a correct verdict.
   const wethBefore = await publicClient.readContract({
     address: WETH,
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: [account.address],
   })
+  const wethAllowanceBase = await allowanceOf(WETH)
 
   const program = buildAmmProgram({ feeBps: 3_000_000, salt: randomSalt() })
   const order = buildAquaOrder(account.address, program)
@@ -152,8 +157,8 @@ async function main() {
   })
   check(
     'approval carries headroom above the shipped amount, and is still bounded',
-    allowance === withHeadroom(amount0, true) && allowance < 2n ** 255n,
-    `${allowance} = ${amount0} x${APPROVAL_HEADROOM_MULTIPLIER}`,
+    allowance - wethAllowanceBase === withHeadroom(amount0, true) && allowance < 2n ** 255n,
+    `+${allowance - wethAllowanceBase} = ${amount0} x${APPROVAL_HEADROOM_MULTIPLIER}`,
   )
 
   const { result } = await publicClient.simulateContract({
@@ -168,6 +173,60 @@ async function main() {
   const net = (100_000_000n * (1_000_000_000n - 3_000_000n)) / 1_000_000_000n
   const expected = (net * amount0) / (amount1 + net)
   check('quote matches the constant-product curve with fee', amountOut === expected, `${amountOut} vs ${expected}`)
+
+  // Execute the swap for real, and pin how allowance actually moves. The whole
+  // headroom default rests on this, so it is asserted rather than assumed:
+  // only the pulled leg spends allowance, and nothing ever gives it back.
+  const wethAllowanceBefore = await allowanceOf(WETH)
+  const usdcAllowanceBefore = await allowanceOf(USDC)
+  const usdcHeldBefore = await publicClient.readContract({
+    address: USDC,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [account.address],
+  })
+
+  await fundUsdc(taker.address, 100_000_000n)
+  const takerWallet = createWalletClient({ account: taker, chain, transport: http(RPC) })
+  for (const data of [
+    encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [SWAPVM, 100_000_000n] }),
+  ]) {
+    const h = await takerWallet.sendTransaction({ to: USDC, data })
+    await publicClient.waitForTransactionReceipt({ hash: h })
+  }
+  const swapHash = await takerWallet.writeContract({
+    address: SWAPVM,
+    abi: SWAPVM_ABI,
+    functionName: 'swap',
+    // IS_EXACT_IN | USE_TRANSFER_FROM_AND_AQUA_PUSH, so the taker needs no callback contract.
+    args: [order, USDC, WETH, 100_000_000n, `0x${'00'.repeat(18)}0041`],
+  })
+  await publicClient.waitForTransactionReceipt({ hash: swapHash })
+
+  const wethAllowanceAfter = await allowanceOf(WETH)
+  const usdcAllowanceAfter = await allowanceOf(USDC)
+  const usdcHeldAfter = await publicClient.readContract({
+    address: USDC,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [account.address],
+  })
+
+  check(
+    'the pulled leg spends allowance, by exactly the amount pulled',
+    wethAllowanceBefore - wethAllowanceAfter === amountOut,
+    `${wethAllowanceBefore - wethAllowanceAfter} pulled ${amountOut}`,
+  )
+  check(
+    'the pushed leg spends no maker allowance — push spends the taker’s',
+    usdcAllowanceAfter === usdcAllowanceBefore,
+    `${usdcAllowanceAfter}`,
+  )
+  check(
+    'incoming tokens land outside the approval, so it is never replenished',
+    usdcHeldAfter > usdcHeldBefore && usdcAllowanceAfter === usdcAllowanceBefore,
+    `held +${usdcHeldAfter - usdcHeldBefore}, approval unchanged`,
+  )
 
   const dockTxs = buildDockTxs({
     aqua: AQUA,
@@ -189,13 +248,15 @@ async function main() {
   })
   check('dock marks the strategy docked', dockedCount === 255, `tokensCount=${dockedCount}`)
 
-  const afterAllowance = await publicClient.readContract({
-    address: WETH,
-    abi: erc20Abi,
-    functionName: 'allowance',
-    args: [account.address, AQUA],
-  })
-  check('dock released the whole approval including headroom', afterAllowance === 0n, `${afterAllowance}`)
+  const afterAllowance = await allowanceOf(WETH)
+  // Ship added the headroom, the swap spent `amountOut` of it, dock gives the
+  // headroom back — so the allowance returns to its baseline less what was pulled.
+  const expectedAfterDock = wethAllowanceBase > amountOut ? wethAllowanceBase - amountOut : 0n
+  check(
+    'dock released the whole approval including headroom',
+    afterAllowance === expectedAfterDock,
+    `${afterAllowance} vs ${expectedAfterDock}`,
+  )
 
   const wethHeld = await publicClient.readContract({
     address: WETH,
@@ -203,7 +264,12 @@ async function main() {
     functionName: 'balanceOf',
     args: [account.address],
   })
-  check('no tokens ever left the wallet', wethHeld === wethBefore, formatUnits(wethHeld, 18))
+  // Ship and dock move nothing; the only outflow is the swap that was executed.
+  check(
+    'tokens left the wallet only through the swap',
+    wethHeld === wethBefore - amountOut,
+    `${formatUnits(wethHeld, 18)} = ${formatUnits(wethBefore, 18)} - ${formatUnits(amountOut, 18)}`,
+  )
 
   console.log(`\n${failures === 0 ? 'all checks passed' : `${failures} check(s) failed`}`)
   process.exit(failures === 0 ? 0 : 1)

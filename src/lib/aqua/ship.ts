@@ -53,9 +53,9 @@ export function allowanceAfterShip(currentAllowance: bigint, add: bigint): bigin
  * token — the allowance is per (owner, spender), not per strategy.
  *
  * Amounts stay bounded and legible, never `type(uint256).max`, but `approve` may
- * exceed the shipped amount to leave headroom: every `pull()` spends allowance
- * and, unlike the balance, it is not replenished by fees, so an exact approval
- * is used up after about one turnover and the strategy stops filling.
+ * exceed the shipped amount to leave headroom: a swap spends the allowance of
+ * the leg it pulls out and never returns it, so an exact approval is used up
+ * after about one turnover and the strategy stops filling.
  */
 export function buildShipTxs({ aqua, app, order, legs }: ShipParams): SafeTx[] {
   if (legs.length < 2) throw new Error('a strategy needs at least two tokens')

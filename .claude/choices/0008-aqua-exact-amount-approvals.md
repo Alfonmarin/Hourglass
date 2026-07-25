@@ -55,11 +55,20 @@ wrong.
 
 ## Amendment 2 (2026-07-25) — headroom, on by default
 
-The original "exact amount" rule was wrong in practice. Every `pull()` spends
-allowance via `transferFrom`, and unlike the balance the allowance is **not**
-replenished by fees — so an exact approval is consumed after roughly one
-turnover of the position and the strategy silently stops filling. That is a bad
-default for a rail whose whole appeal is unattended market-making.
+The original "exact amount" rule was wrong in practice.
+
+Measured on a Base fork (and now asserted by `scripts/aqua-fork-check.ts`): a
+swap spends the maker's allowance for the token it pulls **out**, by exactly the
+amount pulled, because Aqua calls `transferFrom(maker, …)` on that leg. The
+incoming leg costs the maker nothing — `push()` spends the *taker's* allowance —
+so tokens arriving from swaps, fees included, land outside the approval and
+never replenish it.
+
+An allowance therefore only falls, and is consumed by a token's gross outflow
+rather than its net flow: in a two-way market both legs drain while the balances
+hold steady. An exact approval is consumed after roughly one turnover and the
+strategy silently stops filling — a bad default for a rail whose whole appeal is
+unattended market-making.
 
 Approvals now carry **10× headroom by default**, exposed as a two-option toggle
 (`Headroom ×10` / `Exact`) so it is one click to opt out. The multiplier is a
