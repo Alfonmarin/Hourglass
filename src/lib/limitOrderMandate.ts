@@ -1,23 +1,31 @@
 import { createDelegation, BalanceChangeType } from '@metamask/smart-accounts-kit'
-import { keccak256, encodePacked, type Address, type Hex } from 'viem'
+import { keccak256, encodePacked, encodeFunctionData, erc20Abi, type Address, type Hex } from 'viem'
 import type { DelegationStruct } from './delegations'
 import type { Caveat } from './storage'
 
 /**
- * Build a limit-order mandate: one delegation the Safe signs once, letting an
- * agent make a SINGLE swap that only clears at or below a target price — a
- * non-custodial buy-the-dip. Everything is enforced on-chain:
+ * Build a limit-order mandate as a PAIR of delegations the Safe signs (two
+ * signatures), which together let an agent make a SINGLE buy-the-dip swap:
  *
- *   - `functionCall` scope → approve on the funding token + execute on the router.
- *   - `erc20BalanceChange` Decrease on the funding token → the max spent.
- *   - `erc20BalanceChange` Increase on the bought token → the min received. Since a
- *     lower price returns MORE of the bought token, requiring a minimum received is
- *     equivalent to "only if the price is at or below the trigger": the swap reverts
- *     when the token is too expensive, clears when it's cheap enough.
- *   - `limitedCalls(1)` → the order fires exactly once.
+ *   1. `approve` delegation — scope: approve on the funding token. The exact
+ *      calldata is pinned (approve(router, maxSpend)), so the agent can only grant
+ *      the router an allowance of exactly the max spend, nothing else.
+ *   2. `swap` delegation — scope: execute on the router, bounded by:
+ *        - erc20BalanceChange Decrease on the funding token → the max spent.
+ *        - erc20BalanceChange Increase on the bought token → the min received; a
+ *          lower price returns MORE, so a minimum received == "only at/below the
+ *          trigger price".
+ *        - limitedCalls(1) → fires exactly once.
  *
- * The agent watches the price off-chain and redeems when the dip hits; the caveats
- * guarantee it can only spend up to the cap, only at/below the price, only once.
+ * WHY TWO DELEGATIONS. A single delegation redeemed as approve THEN swap runs its
+ * full caveat chain around EACH execution: the approve moves no bought-token, so
+ * the Increase bound reverts on it (insufficient-balance-increase); and
+ * limitedCalls(1) counts per redemption, so the second call exceeds the limit.
+ * Splitting them gives each its own delegationHash: the Increase bound lives only
+ * on the swap, and each limitedCalls counter is independent. The agent redeems both
+ * in one redeemDelegations call (two SingleDefault entries).
+ *
+ * The two share the same salt-derived pairing so discovery can re-associate them.
  */
 
 export interface LimitOrderParams {
@@ -27,7 +35,7 @@ export interface LimitOrderParams {
   agentAddress: Address
   /** SmartAccountsEnvironment from getEnvironment(chainId) — see the `as never` note. */
   environment: unknown
-  /** The Uniswap Universal Router the swap goes through. */
+  /** The Uniswap Universal Router the swap goes through (also the approve spender). */
   swapRouter: Address
   /** The account measured by the balance-change caveats — the Safe. */
   recipient: Address
@@ -35,54 +43,92 @@ export interface LimitOrderParams {
   fundingToken: Address
   /** The token bought (e.g. WETH). */
   targetToken: Address
-  /** Max spend, raw units of the funding token. */
+  /** Max spend, raw units of the funding token — the approve amount and the Decrease cap. */
   maxSpend: bigint
   /** Min received, raw units of the target token — the price trigger. */
   minReceived: bigint
 }
 
-const SELECTORS = ['approve(address,uint256)', 'execute(bytes,bytes[],uint256)'] as const
+/** The signed (or unsigned) pair that forms one limit order. */
+export interface LimitOrderPair {
+  /** Grants approve(router, maxSpend) on the funding token. */
+  approve: DelegationStruct
+  /** Grants the router swap, bounded by spend cap + price trigger + one-shot. */
+  swap: DelegationStruct
+}
 
-/** salt = keccak256(terms) (project convention; never '0x' — computeDelegationHash does BigInt(salt)). */
-function orderSalt(p: LimitOrderParams): Hex {
+const SWAP_SELECTOR = 'execute(bytes,bytes[],uint256)'
+const APPROVE_SELECTOR = 'approve(address,uint256)'
+
+/** salt = keccak256(terms) (project convention; never '0x'). The `tag` keeps the two
+ * delegations of one order distinct while both derive from the same order inputs. */
+function orderSalt(p: LimitOrderParams, tag: 'approve' | 'swap'): Hex {
   const packed = encodePacked(
-    ['address', 'address', 'address', 'address', 'uint256', 'uint256'],
-    [p.swapRouter, p.agentAddress, p.fundingToken, p.targetToken, p.maxSpend, p.minReceived],
+    ['string', 'address', 'address', 'address', 'address', 'uint256', 'uint256'],
+    [tag, p.swapRouter, p.agentAddress, p.fundingToken, p.targetToken, p.maxSpend, p.minReceived],
   )
   return keccak256(packed)
 }
 
-/** Build the unsigned limit-order delegation (signature '0x' until signed). */
-export function buildLimitOrderMandate(p: LimitOrderParams): DelegationStruct {
-  if (p.maxSpend <= 0n) throw new Error('a limit order needs a positive max spend')
-  if (p.minReceived <= 0n) throw new Error('a limit order needs a positive min received (the price trigger)')
+function toStruct(sdk: { delegate: Address; delegator: Address; authority: Hex; caveats: Caveat[]; salt: Hex }): DelegationStruct {
+  return { delegate: sdk.delegate, delegator: sdk.delegator, authority: sdk.authority, caveats: sdk.caveats, salt: sdk.salt, signature: '0x' }
+}
 
-  const sdkDelegation = createDelegation({
+/** The approve delegation: exactly approve(router, maxSpend) on the funding token. */
+function buildApproveDelegation(p: LimitOrderParams): DelegationStruct {
+  // Pin the exact calldata so the agent can only approve the router for maxSpend.
+  const approveCalldata = encodeFunctionData({
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [p.swapRouter, p.maxSpend],
+  })
+  const sdk = createDelegation({
     to: p.agentAddress,
     from: p.moduleAddress,
     environment: p.environment as never,
     scope: {
       type: 'functionCall',
-      targets: [p.swapRouter, p.fundingToken, p.targetToken],
-      selectors: SELECTORS,
+      targets: [p.fundingToken],
+      selectors: [APPROVE_SELECTOR],
     } as never,
     caveats: [
-      // Max spent — the anti-drain cap.
+      { type: 'exactCalldata', calldata: approveCalldata },
+    ] as never,
+    salt: orderSalt(p, 'approve'),
+  }) as { delegate: Address; delegator: Address; authority: Hex; caveats: Caveat[]; salt: Hex }
+  return toStruct(sdk)
+}
+
+/** The swap delegation: router execute, bounded by spend cap + price trigger + one-shot. */
+function buildSwapDelegation(p: LimitOrderParams): DelegationStruct {
+  const sdk = createDelegation({
+    to: p.agentAddress,
+    from: p.moduleAddress,
+    environment: p.environment as never,
+    scope: {
+      type: 'functionCall',
+      targets: [p.swapRouter],
+      selectors: [SWAP_SELECTOR],
+    } as never,
+    caveats: [
+      // Max spent — the anti-drain cap (measured on the Safe, which spends).
       { type: 'erc20BalanceChange', tokenAddress: p.fundingToken, recipient: p.recipient, balance: p.maxSpend, changeType: BalanceChangeType.Decrease },
       // Min received — the price trigger (only clears at/below the target price).
       { type: 'erc20BalanceChange', tokenAddress: p.targetToken, recipient: p.recipient, balance: p.minReceived, changeType: BalanceChangeType.Increase },
       // Fire exactly once.
       { type: 'limitedCalls', limit: 1 },
     ] as never,
-    salt: orderSalt(p),
+    salt: orderSalt(p, 'swap'),
   }) as { delegate: Address; delegator: Address; authority: Hex; caveats: Caveat[]; salt: Hex }
+  return toStruct(sdk)
+}
 
+/** Build the unsigned limit-order delegation pair (signatures '0x' until signed). */
+export function buildLimitOrderMandate(p: LimitOrderParams): LimitOrderPair {
+  if (p.maxSpend <= 0n) throw new Error('a limit order needs a positive max spend')
+  if (p.minReceived <= 0n) throw new Error('a limit order needs a positive min received (the price trigger)')
   return {
-    delegate: sdkDelegation.delegate,
-    delegator: sdkDelegation.delegator,
-    authority: sdkDelegation.authority,
-    caveats: sdkDelegation.caveats,
-    salt: sdkDelegation.salt,
-    signature: '0x',
+    approve: buildApproveDelegation(p),
+    swap: buildSwapDelegation(p),
   }
 }

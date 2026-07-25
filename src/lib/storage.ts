@@ -65,6 +65,12 @@ export interface StoredDelegation {
     capPerSwap?: string
     // true = the cap bounds a DECREASE (spend) of the token; the enforced direction.
     enforceDecrease?: boolean
+    // Limit-order pairing (strategyKind === 'limitOrder'). A limit order is TWO
+    // delegations: the swap carries the strategy (spend cap + price trigger +
+    // limitedCalls), the approve grants the router its allowance. Each references
+    // the other's delegationHash so discovery (and the agent) can reunite the pair.
+    pairedApproveHash?: Hex
+    pairedSwapHash?: Hex
     // Custom delegation meta
     targetAddress?: Address
     methodSelector?: Hex
