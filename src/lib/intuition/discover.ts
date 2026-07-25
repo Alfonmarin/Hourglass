@@ -159,6 +159,32 @@ export function findBalanceChangeCaveat(
   )
 }
 
+/** The ERC-20 approve selector — approve(address,uint256). */
+const APPROVE_SELECTOR = '0x095ea7b3'
+
+/**
+ * The funding token an approve delegation targets — the companion of a limit-order
+ * swap. Identified by an allowedMethods caveat pinned to the approve selector; the
+ * token is its allowedTargets caveat (a single 20-byte address). Both route through
+ * the HourGlass enforcer instances (see environment.ts). Returns null if this is not
+ * an approve delegation, so the publish path can tell it apart from a strategy.
+ */
+export function findApproveTargetToken(delegation: DelegationStruct, chainId: number): Address | null {
+  const hourglass = getAddresses(chainId).hourglass
+  if (!hourglass) return null
+  const methods = hourglass.allowedMethodsEnforcer.toLowerCase()
+  const targets = hourglass.allowedTargetsEnforcer.toLowerCase()
+  const isApprove = delegation.caveats.some(
+    (c) => c.enforcer.toLowerCase() === methods && c.terms.toLowerCase().startsWith(APPROVE_SELECTOR),
+  )
+  if (!isApprove) return null
+  const target = delegation.caveats.find((c) => c.enforcer.toLowerCase() === targets)
+  // allowedTargets terms is the concatenated 20-byte target list; an approve grant
+  // has exactly one target (the funding token).
+  if (!target || (target.terms.length - 2) / 2 !== 20) return null
+  return getAddress(target.terms)
+}
+
 /**
  * Whether the mandate carries a limitedCalls caveat — the marker of a limit order
  * (a single price-triggered swap) versus a recurring DCA. Both carry a
