@@ -6,6 +6,7 @@ import Charge from './pages/Charge'
 import Yield from './pages/Yield'
 import Strategy from './pages/Strategy'
 import LimitOrder from './pages/LimitOrder'
+import { useFinalizePending } from './hooks/useFinalizePending'
 import { Logo, Card } from './ui/components'
 import { IconGrid, IconPlus, IconBolt, IconRepeat, IconLock, IconArrowR, IconTrend, IconStop } from './ui/icons'
 
@@ -90,6 +91,13 @@ function CreateChoice({ onPick }: { onPick: (mode: CreateMode) => void }) {
 function AppInner() {
   const [page, setPage] = useState<Page>('home')
   const [createMode, setCreateMode] = useState<CreateMode>('choose')
+
+  // Finalize-on-open (ADR 0005): poke the publisher for any finalized mandate the
+  // Safe signed, from ANY tab — not only Overview. A strategy / limit-order
+  // operator signs on that tab and stays there; mounting this at the app root means
+  // the poke fires as soon as the message reaches its signing threshold, without
+  // having to navigate back to Home.
+  useFinalizePending()
 
   function navigate(key: Page) {
     if (key === 'create') setCreateMode('choose')
