@@ -10,7 +10,7 @@ import { getAddresses } from '../config/addresses'
 import { DeleGatorModuleFactoryABI } from '../config/abis'
 import { DEFAULT_SALT } from '../lib/module'
 import { findChain, rpcUrl, chainName } from '../config/supported-chains'
-import type { PoolInfo } from '../lib/uniswapDiscovery'
+import { poolValueShare, type PoolInfo } from '../lib/uniswapDiscovery'
 import { Card, Btn, Mono, CopyChip } from '../ui/components'
 import { Block, Field } from '../ui/form'
 import { IconTrend, IconAlert, IconCheck } from '../ui/icons'
@@ -18,7 +18,6 @@ import { IconTrend, IconAlert, IconCheck } from '../ui/icons'
 const feeLabel = (fee: number) => `${(fee / 10_000).toFixed(2)}%`
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 const usdCompact = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
-const numCompact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 
 // A signed delegation grants a real permission; keep the window it stays
 // redeemable short rather than open-ended.
@@ -225,16 +224,16 @@ export default function Yield() {
                 onClick={() => setSelectedPool(p)}
                 className={`p-4 cursor-pointer flex items-center justify-between gap-4 ${active ? 'ring-line2' : ''}`}
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="grid place-items-center w-9 h-9 rounded-xl shrink-0" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                     <IconTrend size={16} />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-ink flex items-center gap-2">
+                    <div className="text-sm font-semibold text-ink flex items-center gap-2 truncate">
                       {p.token0.symbol} / {p.token1.symbol}
                       <span className="text-faint font-normal">· {feeLabel(p.fee)}</span>
                       {isRecommended && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold shrink-0" style={{ color: 'var(--accent)' }}>
                           <IconCheck size={12} /> recommended
                         </span>
                       )}
@@ -242,13 +241,30 @@ export default function Yield() {
                     <div className="text-[11px] font-mono text-faint truncate">{short(p.poolAddress)}</div>
                   </div>
                 </div>
-                <div className="text-center shrink-0 px-4">
-                  <div className="text-[11px] font-semibold text-faint uppercase tracking-wide">TVL</div>
-                  <div className="font-mono font-bold text-ink tnum" style={{ fontSize: 18 }}>
-                    {p.tvlUSD !== null
-                      ? usdCompact.format(p.tvlUSD)
-                      : `${numCompact.format(Number(formatUnits(p.tvlToken0, p.token0.decimals)))} ${p.token0.symbol} + ${numCompact.format(Number(formatUnits(p.tvlToken1, p.token1.decimals)))} ${p.token1.symbol}`}
+                <div className="shrink-0 w-[220px]">
+                  <div className="text-center font-mono text-sm font-bold text-ink tnum">
+                    TVL{p.tvlUSD !== null ? `: ${usdCompact.format(p.tvlUSD)}` : ': insufficient data'}
                   </div>
+                  {(() => {
+                    const share = poolValueShare(p)
+                    if (!share) return null
+                    return (
+                      <>
+                        <div className="h-1.5 rounded-full overflow-hidden flex bg-line mt-2">
+                          <div className="h-full" style={{ width: `${share.pct0 * 100}%`, background: 'var(--accent)' }} />
+                          <div className="h-full bg-line2" style={{ width: `${share.pct1 * 100}%` }} />
+                        </div>
+                        <div className="flex justify-between mt-1.5 text-[11px] text-faint">
+                          <span>
+                            {p.token0.symbol} <span className="text-ink font-semibold">{(share.pct0 * 100).toFixed(0)}%</span>
+                          </span>
+                          <span>
+                            {p.token1.symbol} <span className="text-ink font-semibold">{(share.pct1 * 100).toFixed(0)}%</span>
+                          </span>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-mono text-sm text-ink tnum">{p.apy !== null ? `${(p.apy * 100).toFixed(1)}% APY` : 'insufficient data'}</div>

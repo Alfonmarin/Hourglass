@@ -1,4 +1,4 @@
-import { erc20Abi, zeroAddress, type Address, type PublicClient } from 'viem'
+import { erc20Abi, formatUnits, zeroAddress, type Address, type PublicClient } from 'viem'
 import { UniswapV3FactoryABI, UniswapV3PoolABI } from '../config/abis'
 import { UNISWAP_V3_FACTORY, UNISWAP_V3_SUBGRAPH_ID, FEE_TIERS, CANDIDATE_TOKENS, type CandidateToken } from '../config/uniswap'
 
@@ -76,6 +76,28 @@ export async function discoverPools(client: PublicClient, chainId: number): Prom
     }
   }
   return found
+}
+
+/**
+ * Each token's share of the pool's value, derived only from the pool's own
+ * on-chain price (`sqrtPriceX96`) and reserves — no USD price feed needed, so
+ * it works even where the subgraph doesn't (e.g. Base Sepolia). Prices token0
+ * in terms of token1 and compares like-for-like, so "50/50" here means equal
+ * *value*, not equal raw token counts. `Number()` on the bigints loses
+ * precision past 2^53, which is fine — this feeds a percentage bar, not a
+ * financial calculation. Null only if the pool has no price or no balance to
+ * compare (shouldn't happen for a pool with liquidity > 0).
+ */
+export function poolValueShare(pool: PoolInfo): { pct0: number; pct1: number } | null {
+  const sqrtPrice = Number(pool.sqrtPriceX96) / 2 ** 96
+  const priceOf0In1 = sqrtPrice * sqrtPrice * 10 ** (pool.token0.decimals - pool.token1.decimals)
+  const amount0 = Number(formatUnits(pool.tvlToken0, pool.token0.decimals))
+  const amount1 = Number(formatUnits(pool.tvlToken1, pool.token1.decimals))
+  const value0In1 = amount0 * priceOf0In1
+  const total = value0In1 + amount1
+  if (!Number.isFinite(total) || total <= 0) return null
+  const pct0 = value0In1 / total
+  return { pct0, pct1: 1 - pct0 }
 }
 
 interface LiquidityPoolQueryResult {
