@@ -115,6 +115,35 @@ export function findStreamingCaveat(
   return delegation.caveats.find((c) => enforcers.includes(c.enforcer.toLowerCase())) ?? null
 }
 
+export interface BalanceChangeTerms {
+  /** true = the balance may only DECREASE by at most `amount` (a spend cap). */
+  enforceDecrease: boolean
+  token: Address
+  /** The account whose balance is measured (the Safe, for a strategy mandate). */
+  recipient: Address
+  amount: bigint
+}
+
+/** Decode the erc20BalanceChange caveat terms: enforceDecrease(1) + token(20) + recipient(20) + amount(32) = 73 bytes. */
+export function decodeBalanceChangeTerms(terms: Hex): BalanceChangeTerms {
+  return {
+    enforceDecrease: hexToBigInt(sliceHex(terms, 0, 1)) !== 0n,
+    token: getAddress(sliceHex(terms, 1, 21)),
+    recipient: getAddress(sliceHex(terms, 21, 41)),
+    amount: hexToBigInt(sliceHex(terms, 41, 73)),
+  }
+}
+
+export function findBalanceChangeCaveat(
+  delegation: DelegationStruct,
+  chainId: number,
+): { enforcer: Address; terms: Hex } | null {
+  const enforcers = [getAddresses(chainId).hourglass?.erc20BalanceChangeEnforcer]
+    .filter((a): a is Address => Boolean(a))
+    .map((a) => a.toLowerCase())
+  return delegation.caveats.find((c) => enforcers.includes(c.enforcer.toLowerCase())) ?? null
+}
+
 export function periodFromSeconds(seconds: bigint): string {
   switch (seconds) {
     case 60n:
